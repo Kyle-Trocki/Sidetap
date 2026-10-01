@@ -4,6 +4,12 @@ public struct SignalQuality: Codable, Equatable, Sendable {
     public static let minimumReliablePeakAmplitude = 0.003
     public static let maximumReliableClippingFraction = 0.20
     public static let minimumClassificationSignalToNoiseDB = 6.0
+    /// Above this room level, Sidetap runs no actions rather than guess through
+    /// the noise. Measured on a MacBook Pro's built-in microphone: quiet rooms
+    /// sat at 0.0005 to 0.0017, and a room with music and talking at a median
+    /// of 0.0053. At 0.005 only the louder half of that room is blocked; lower
+    /// it toward 0.002 to block all of it.
+    public static let maximumRoomNoiseFloorRMS = 0.005
 
     public var signalToNoiseDB: Double
     public var peakAmplitude: Double
@@ -68,6 +74,43 @@ public struct TapFeatureVector: Codable, Equatable, Sendable {
         self.values = values
         self.quality = quality
         self.capturedAt = capturedAt
+    }
+}
+
+extension TapFeatureVector {
+    /// One vector for a double tap: the mean of both taps' values, with the
+    /// weaker tap's signal quality so a marginal tap is still rejected.
+    public func averaged(with other: TapFeatureVector) -> TapFeatureVector {
+        TapFeatureVector(
+            strategy: other.strategy,
+            names: other.names,
+            values: zip(values, other.values).map { ($0 + $1) / 2 },
+            quality: quality.signalToNoiseDB <= other.quality.signalToNoiseDB ? quality : other.quality,
+            capturedAt: other.capturedAt
+        )
+    }
+}
+
+/// Pairs taps into double taps. A lone tap produces nothing; two taps
+/// 0.08 to 0.6 s apart produce one combined feature vector.
+public struct DoubleTapRecognizer: Sendable {
+    public static let gap = 0.08...0.6
+
+    private var first: TapFeatureVector?
+    private var firstTime = 0.0
+
+    public init() {}
+
+    /// Returns the combined feature when `feature` completes a double tap.
+    public mutating func add(_ feature: TapFeatureVector, at time: Double) -> TapFeatureVector? {
+        if let first, Self.gap.contains(time - firstTime),
+           first.strategy == feature.strategy, first.names == feature.names {
+            self.first = nil
+            return first.averaged(with: feature)
+        }
+        first = feature
+        firstTime = time
+        return nil
     }
 }
 

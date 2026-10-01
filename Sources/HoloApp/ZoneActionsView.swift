@@ -54,7 +54,7 @@ struct ZoneActionsView: View {
 
                         Section("Automation") {
                             Label("Use Run Shortcut for multi-step workflows such as opening Claude and starting a voice workflow.", systemImage: "command")
-                            Label("Shell commands run through /bin/zsh with Holo's current macOS permissions.", systemImage: "terminal")
+                            Label("Shell commands run through /bin/zsh with Sidetap's current macOS permissions.", systemImage: "terminal")
                             Label("Screenshot actions copy the result and may request Screen Recording access.", systemImage: "camera.viewfinder")
                         }
                         .font(.caption)
@@ -198,6 +198,8 @@ private struct ZoneActionRow: View {
             .accessibilityLabel("Sound to play")
         case .copyText:
             TextField("Text to copy", text: $action.text)
+        case .pasteText:
+            TextField("Text to paste", text: $action.text, prompt: Text("Leave empty to paste the clipboard"))
         case .speakText:
             TextField("Words to speak", text: $action.text)
         case .openURL:

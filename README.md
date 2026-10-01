@@ -1,17 +1,15 @@
-# Holo
+# Sidetap
 
 **Tap your desk. Your Mac responds.**
 
-[![CI](https://github.com/JustinGamer191/Holo/actions/workflows/ci.yml/badge.svg)](https://github.com/JustinGamer191/Holo/actions/workflows/ci.yml)
-
-[Landing page](https://justingamer191.github.io/Holo/) · [Download the latest release](https://github.com/JustinGamer191/Holo/releases/latest)
+Sidetap is a fork of [Holo](https://github.com/JustinGamer191/Holo) by JustinGamer191.
 
 <!--
-Future demo GIF placeholder: ![Holo demo](docs/holo-demo.gif)
+Future demo GIF placeholder: ![Sidetap demo](docs/holo-demo.gif)
 Tip: Record with macOS screen recording, then use ffmpeg's palettegen and paletteuse filters for a crisp, compact GIF.
 -->
 
-Holo is an experimental native macOS utility that turns the desk immediately around a MacBook into four assignable tap zones. It listens through the Mac's microphone, classifies each tap locally, and runs the action assigned to that zone.
+Sidetap is an experimental native macOS utility that turns the desk immediately around a MacBook into four assignable tap zones. It listens through the Mac's microphone, classifies each tap locally, and runs the action assigned to that zone.
 
 The topology is intentionally four broad zones:
 
@@ -23,7 +21,7 @@ Left Front     └─────────────┘      Right Front
                   Trackpad side
 ```
 
-Holo is a research prototype. Automated DSP tests pass, but useful accuracy still has to be measured on each real MacBook, desk, room, and laptop position. No physical accuracy claim is made without a saved 60-tap evaluation from that setup.
+Sidetap is a research prototype. Automated DSP tests pass, but useful accuracy still has to be measured on each real MacBook, desk, room, and laptop position. No physical accuracy claim is made without a saved 60-tap evaluation from that setup.
 
 The requirement-by-requirement evidence ledger is in [ACCEPTANCE.md](ACCEPTANCE.md).
 
@@ -37,20 +35,21 @@ The recovered physical baseline, failure analysis, and controlled iteration prot
 - Adaptive streaming onset detection, sustained-sound rejection, and fixed 90 ms analysis windows.
 - Passive tap acoustics, an optional active acoustic probe, and a hybrid mode.
 - Robust feature normalization, a regularized linear zone model backed by nearest-example novelty checks, ambiguity rejection, out-of-distribution rejection, and optional negative examples.
+- Location-based desk switching: each profile can be pinned to where its desk is, and Sidetap selects it automatically within 300 m.
 - Per-profile actions: visual only, play a sound, copy or speak text, open a website, run a Shortcut, open an application or item, execute a shell command, or capture a screenshot. New zones default to visual-only until the user assigns a side effect.
 - Guided 60-tap held-out evaluation with per-zone accuracy, latency, rejected-tap counts, and a confusion matrix.
 - Saved evaluation history is restored after relaunch and scoped to the desk profile that produced it.
 - Signal diagnostics, labeled feature capture, approach comparison, JSON/CSV reports, and opt-in raw debug WAV capture.
 - Sandboxed, local persistence. Raw audio is discarded by default.
-- Core Audio route validation requires the built-in microphone for every mode and the built-in speakers for Active or Hybrid sensing.
+- Capture always uses the built-in microphone, and the Active and Hybrid probe always uses the built-in speakers, whatever the system default is.
 
 ## Requirements
 
 - macOS 14 or later.
 - Xcode 26 is recommended for the current project. The app uses Liquid Glass button styles on macOS 26 and native bordered controls on older supported systems.
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen) to regenerate `Holo.xcodeproj` from `project.yml`.
-- A MacBook with its built-in microphone selected. External inputs are rejected rather than silently changing the calibrated signal path.
-- Active and Hybrid sensing additionally require MacBook Speakers as the selected output. Passive sensing does not emit a probe.
+- A MacBook with a built-in microphone. Sidetap uses it even when AirPods or another input is the system default, so the calibrated signal path never changes.
+- Active and Hybrid sensing also use the built-in speakers, even when another output is the system default. Passive sensing doesn't emit a probe.
 
 ## Build
 
@@ -62,7 +61,7 @@ xcodegen generate
 
 Then open `Holo.xcodeproj`, select the `Holo` scheme, and run it on My Mac. A new install requests microphone permission when calibration begins or when the user explicitly presses Resume; it does not prompt merely because the window opened.
 
-Use Xcode's normal **Sign to Run Locally** build when launching Holo. `CODE_SIGNING_ALLOWED=NO` is only for non-GUI verification; its stripped bundle lacks the audio-input entitlement and should not be launched. An ad-hoc local build may still need consent again after its binary changes; selecting an Apple Development team gives macOS a stable signing identity across rebuilds. Within one build, Holo coalesces concurrent microphone starts and authorization requests, and its bundle prohibits duplicate app instances.
+Use Xcode's normal **Sign to Run Locally** build when launching Sidetap. `CODE_SIGNING_ALLOWED=NO` is only for non-GUI verification; its stripped bundle lacks the audio-input entitlement and should not be launched. An ad-hoc local build may still need consent again after its binary changes; selecting an Apple Development team gives macOS a stable signing identity across rebuilds. Within one build, Sidetap coalesces concurrent microphone starts and authorization requests, and its bundle prohibits duplicate app instances.
 
 A non-signing command-line build is useful for CI or local verification:
 
@@ -81,19 +80,29 @@ xcodebuild \
 1. Put the MacBook where it will remain during use. Moving or rotating it changes the acoustic path and invalidates the profile.
 2. Open Calibration and describe the desk, surface, and MacBook position.
 3. Keep Passive tap acoustics selected unless Diagnostics has compared the approaches on this exact setup.
-4. Begin calibration. Holo prepares and arms the highlighted zone automatically.
+4. Begin calibration. Sidetap prepares and arms the highlighted zone automatically.
 5. Wait for Preparing to change to Listening, then make ten natural taps with a short pause between them. Spread the taps around the highlighted area instead of repeating one exact point.
-6. Weak, masked, or clipped taps are not added; Holo explains whether to tap more firmly, wait for quiet, or use a lighter touch.
-7. The zone disarms after ten accepted samples. Move to the next highlighted zone during the short transition; Holo arms it automatically. Sounds made during the transition are ignored. If listening is paused, use the visible Arm control after resuming.
+6. Weak, masked, or clipped taps are not added; Sidetap explains whether to tap more firmly, wait for quiet, or use a lighter touch.
+7. The zone disarms after ten accepted samples. Move to the next highlighted zone during the short transition; Sidetap arms it automatically. Sounds made during the transition are ignored. If listening is paused, use the visible Arm control after resuming.
 8. Use Undo for the latest sample or Redo Zone if a set was inconsistent.
 9. Review the leave-one-out calibration agreement. If it is weak, redo the identified zone before saving.
 10. Save the 40-sample profile and assign its four actions.
 
-Talking, typing, touching the laptop, and room noise can be collected as negative examples after the four zones are complete. Talking is recommended: speak normally for a few seconds and Holo records only speech peaks that get past the impact gate. Negative examples intentionally do not have to pass the clean-tap quality gate. Only their feature vectors are persisted unless raw debug recording is separately enabled.
+Talking, typing, touching the laptop, and room noise can be collected as negative examples after the four zones are complete. Talking is recommended: speak normally for a few seconds and Sidetap records only speech peaks that get past the impact gate. Negative examples intentionally do not have to pass the clean-tap quality gate. Only their feature vectors are persisted unless raw debug recording is separately enabled.
 
 Profiles from the obsolete six-zone and nine-zone topologies are intentionally ignored. Recalibrate rather than trying to reinterpret old samples as new physical zones.
 
 While calibration, an accuracy test, or a sensing comparison is active, unrelated sidebar destinations and profile switching are disabled. Cancel or finish the guided capture first. Pausing the microphone disarms every pending capture, including rejection training. Changing profiles never turns a paused microphone back on; explicitly starting a guided capture does resume it.
+
+## Switching desks by location
+
+If you use Sidetap at more than one desk, such as at home and at work, calibrate a profile at each desk. Sidetap then switches to the right one when you arrive.
+
+1. Calibrate a desk and select its profile.
+2. In the profile menu in the toolbar, choose **Use This Location for** the profile. The first time, macOS asks for location access.
+3. Repeat at each desk. A new desk that you calibrate while location switching is on is pinned to where you are automatically.
+
+Sidetap switches to a pinned profile only when the Mac is within 300 m of it. Anywhere else, Sidetap suggests setting up a new desk there, once per place, and keeps the current profile until you do. Sidetap ignores location fixes that are less precise than 300 m. It can't tell apart two desks in the same building. To remove a pin, choose **Forget Location for** the profile.
 
 ## Assigning actions
 
@@ -102,14 +111,22 @@ Actions contains exactly four rows grouped by side. Changes save to the selected
 - Visual only highlights the accepted zone without a side effect.
 - Play sound uses an available macOS system sound.
 - Copy text writes the configured text to the pasteboard.
+- Paste text sends ⌘V to the frontmost app. With no text configured, it pastes whatever is on the pasteboard. With text configured, it puts that text on the pasteboard, pastes it, and then restores the previous contents. macOS asks for Accessibility access the first time.
 - Speak text uses the local speech synthesizer.
 - Open website accepts HTTP or HTTPS addresses.
 - Run Shortcut opens the named Shortcut through the system Shortcuts URL scheme.
 - Open or focus app stores an app-scoped security bookmark for the application selected by the user.
 - Open file or folder stores an app-scoped security bookmark for a user-selected item.
-- Run shell command executes the configured command through `/bin/zsh` with Holo's sandbox permissions.
+- Run shell command executes the configured command through `/bin/zsh` with Sidetap's sandbox permissions.
 - Screenshot to clipboard captures the full display without saving a file.
 - Select screenshot to clipboard invokes the standard interactive area-selection tool.
+
+Actions run on a double tap: two taps 0.08 to 0.6 seconds apart. Sidetap averages both taps into one zone decision, so tap the same zone twice. A single tap does nothing. Calibration still uses single taps.
+
+Sidetap ignores a tap in these cases, even when it would otherwise match a zone:
+
+- A key press or trackpad click happened within 300 ms of it. Typing shakes the MacBook the same way a tap does.
+- The room is too noisy. When the background level is above about ten times that of a quiet room, Sidetap runs no actions and the status bar says so.
 
 Actions run only for an accepted classification while Desk is selected. Calibration, profile editing, diagnostics, accuracy reports, and the Actions editor suppress automatic side effects; the editor's inline Test button remains explicit. Rejected, ambiguous, weak, clipped, or out-of-distribution events do not trigger an action. Shell commands run automatically once assigned, so commands should be safe to repeat and should not depend on an interactive terminal. macOS may request access when an action first opens a protected item or captures the screen. A Shortcut is the recommended way to compose multi-step workflows such as opening Claude and beginning a user-defined voice flow.
 
@@ -137,7 +154,7 @@ Passive tap acoustics is the default and does not play sound. The feature extrac
 
 Active acoustic probe emits a low-amplitude 15.5–21 kHz chirp every 120 ms and adds response-correlation features. Hybrid combines both feature sets. Laptop speakers, microphones, sample rates, hearing ranges, and desk geometry vary, so the probe may be filtered, ineffective, or faintly audible. It is never assumed to outperform passive sensing.
 
-Before capture starts, Holo reads the default Core Audio input/output transport types. The built-in microphone is mandatory; Active and Hybrid also require built-in speaker output. A route change that violates this policy stops capture and the probe immediately.
+Before capture starts, Sidetap finds the built-in microphone and speakers by their Core Audio transport type and pins capture and the probe to them. The system default can stay on AirPods or a display. On macOS, an `AVAudioEngine` drives input and output through one I/O unit, so the probe runs on a second engine. If no built-in microphone exists, capture doesn't start. Active and Hybrid also need built-in speakers. If either engine stops after a device change, capture stops.
 
 The bottom status bar explicitly says when the speaker probe is active.
 
@@ -170,7 +187,7 @@ The interface rationale and source research are in [DESIGN.md](DESIGN.md). The c
 
 ## Privacy and storage
 
-Audio processing happens on the Mac. Holo does not upload audio, features, profiles, or reports. An assigned website or application action can of course open that external destination.
+Audio processing happens on the Mac. Sidetap does not upload audio, features, profiles, or reports. An assigned website or application action can of course open that external destination.
 
 By default:
 
@@ -179,7 +196,7 @@ By default:
 - Profiles store feature vectors and classifier parameters, not recordings.
 - Debug recording starts disabled on every launch.
 
-Holo uses one application window because there is one microphone engine and one guided-session state. Closing that window terminates Holo, preventing microphone capture from continuing without its in-app activity indicator.
+Sidetap uses one application window because there is one microphone engine and one guided-session state. Closing that window terminates Sidetap, preventing microphone capture from continuing without its in-app activity indicator.
 
 When Retain 90 ms debug recordings is enabled in Diagnostics, each detected window is saved locally as a float WAV until the user deletes it. The UI shows a persistent red privacy warning while retention is enabled. If captures remain after a relaunch, an orange saved-audio indicator and the delete control remain visible even though new audio is being discarded.
 
@@ -192,7 +209,7 @@ Holo/approach-comparison.json  latest sensing comparison
 Holo/DebugCaptures/            opt-in raw WAV windows only
 ```
 
-Because the app is sandboxed, these paths live inside Holo's app container in normal signed builds.
+Because the app is sandboxed, these paths live inside Sidetap's app container in normal signed builds.
 
 ## Automated verification
 
@@ -234,7 +251,7 @@ DYLD_FRAMEWORK_PATH=/tmp/HoloSoakDerived/Build/Products/Release \
 
 The synthetic runner exercises feature extraction, classification, rejection gates, finite-value checks, and resident-memory behavior. It does not exercise AVAudioEngine, microphone permissions, real room noise, physical desk variability, or action dispatch.
 
-Check the current built-in hardware routes without opening Holo or requesting microphone access:
+Check the current built-in hardware routes without opening Sidetap or requesting microphone access:
 
 ```sh
 xcodebuild \
@@ -251,7 +268,7 @@ DYLD_FRAMEWORK_PATH=/tmp/HoloRouteDerived/Build/Products/Debug \
 
 ## Known limitations
 
-- A profile is specific to one MacBook, surface, room arrangement, and laptop position. Holo rejects external input devices because they change the sensing path.
+- A profile is specific to one MacBook, surface, room arrangement, and laptop position. Sidetap rejects external input devices because they change the sensing path.
 - Built-in microphone APIs may expose one aggregate channel rather than independent physical array elements.
 - Soft, unstable, very large, heavily damped, or noisy surfaces may not produce separable zones.
 - Short consonants, typing, laptop touches, dropped objects, and nearby impacts can resemble taps. The sustained-sound gate and profile-specific negatives reduce false positives but cannot guarantee none.
@@ -270,8 +287,8 @@ For every supported Mac/desk combination:
 4. Confirm at least 80% overall accuracy and median response below 200 ms.
 5. Run the live app for 30 minutes with representative taps, conversation, typing, laptop touches, and background noise while monitoring crashes, false triggers, and memory.
 
-Until those physical checks are complete, Holo should be described as functional experimental software—not a proven acoustic input device.
+Until those physical checks are complete, Sidetap should be described as functional experimental software—not a proven acoustic input device.
 
 ## License
 
-Holo is available under the [MIT License](LICENSE).
+Sidetap is available under the [MIT License](LICENSE).

@@ -154,7 +154,7 @@ let elapsed = Date().timeIntervalSince(started)
 let finalMemory = residentMegabytes()
 let growth = finalMemory - initialMemory
 let summary = String(
-    format: "Holo soak complete: %.1fs, \(iteration) events; positives \(positiveCorrect) correct, \(positiveRejected) rejected, \(positiveWrong) wrong; rejection challenges \(rejectionChallengesPassed) rejected, \(rejectionChallengesFalseAccepted) false accepted; RSS %.1f→%.1f MB (Δ %.1f MB)",
+    format: "Sidetap soak complete: %.1fs, \(iteration) events; positives \(positiveCorrect) correct, \(positiveRejected) rejected, \(positiveWrong) wrong; rejection challenges \(rejectionChallengesPassed) rejected, \(rejectionChallengesFalseAccepted) false accepted; RSS %.1f→%.1f MB (Δ %.1f MB)",
     elapsed, initialMemory, finalMemory, growth
 )
 print(summary)

@@ -3,6 +3,8 @@ import Foundation
 public enum LocalActionCommand: Equatable, Sendable {
     case playSound(name: String)
     case copyText(String)
+    /// Empty text means paste whatever is already on the pasteboard.
+    case pasteText(String)
     case speakText(String)
     case openURL(URL)
     case runShortcut(URL)
@@ -26,6 +28,9 @@ public enum LocalActionPlanner {
 
         case .copyText:
             return hasContent(action.text) ? .copyText(action.text) : nil
+
+        case .pasteText:
+            return .pasteText(hasContent(action.text) ? action.text : "")
 
         case .speakText:
             return hasContent(action.text) ? .speakText(action.text) : nil

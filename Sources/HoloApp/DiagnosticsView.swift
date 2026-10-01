@@ -40,7 +40,7 @@ struct DiagnosticsView: View {
                     LabeledContent("Reported input latency", value: String(format: "%.1f ms", model.audio.diagnostics.timing.estimatedInputLatencyMilliseconds))
                     LabeledContent("Callback jitter", value: String(format: "%.2f ms", model.audio.diagnostics.timing.callbackJitterMilliseconds))
                     Label(
-                        "Holo uses only the channels exposed by AVAudioEngine; physical microphone-array access is not assumed.",
+                        "Sidetap uses only the channels exposed by AVAudioEngine; physical microphone-array access is not assumed.",
                         systemImage: "info.circle"
                     )
                     .font(.caption)
@@ -134,11 +134,11 @@ struct DiagnosticsView: View {
         case .inputUnavailable:
             return "The built-in microphone is unavailable."
         case .builtInInputRequired(let selected):
-            return "\(selected) is selected. Holo requires the built-in microphone."
+            return "Sidetap can't find the built-in microphone. The default input is \(selected)."
         case .outputUnavailable:
             return "This sensing approach requires the built-in speakers, which are unavailable."
         case .builtInOutputRequired(let selected):
-            return "\(selected) is selected. Active sensing requires the built-in speakers."
+            return "Active sensing can't find the built-in speakers. The default output is \(selected)."
         }
     }
 

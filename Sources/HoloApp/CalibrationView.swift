@@ -22,7 +22,7 @@ struct CalibrationView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Set up your desk")
                     .font(.title.weight(.semibold))
-                Text("Ten clean taps in each of four broad zones. Spread them around each highlighted area so Holo learns the whole zone, not one point.")
+                Text("Ten clean taps in each of four broad zones. Spread them around each highlighted area so Sidetap learns the whole zone, not one point.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -168,7 +168,7 @@ struct CalibrationView: View {
                 }
                 .accessibilityElement(children: .combine)
             } else if let zone = session.currentZone {
-                Text("Move your hand to the \(zone.displayName.lowercased()) area. Holo ignores all sounds until you arm the zone.")
+                Text("Move your hand to the \(zone.displayName.lowercased()) area. Sidetap ignores all sounds until you arm the zone.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -271,7 +271,7 @@ struct CalibrationView: View {
                 Spacer()
             }
 
-            DisclosureGroup("Teach Holo sounds to reject (recommended)", isExpanded: $showRejectionTraining) {
+            DisclosureGroup("Teach Sidetap sounds to reject (recommended)", isExpanded: $showRejectionTraining) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Capture Talking first: speak normally for a few seconds. Only speech peaks that reach the classifier are counted, and only acoustic features are saved.")
                         .font(.caption)

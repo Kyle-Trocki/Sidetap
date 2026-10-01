@@ -6,6 +6,8 @@ final class LocalActionPlannerTests: XCTestCase {
         XCTAssertEqual(ZoneActionConfiguration().kind, .none)
         XCTAssertNil(LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .none)))
         XCTAssertNil(LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .copyText, text: "  ")))
+        // Paste text with no text still acts: it pastes the current pasteboard.
+        XCTAssertEqual(LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .pasteText, text: "  ")), .pasteText(""))
         XCTAssertNil(LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .speakText, text: "\n")))
         XCTAssertNil(LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .runShortcut, text: "")))
         XCTAssertNil(LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .openApplication)))
@@ -21,6 +23,10 @@ final class LocalActionPlannerTests: XCTestCase {
         XCTAssertEqual(
             LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .copyText, text: " Focus mode ")),
             .copyText(" Focus mode ")
+        )
+        XCTAssertEqual(
+            LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .pasteText, text: "On my way")),
+            .pasteText("On my way")
         )
         XCTAssertEqual(
             LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .speakText, text: "Done")),

@@ -23,7 +23,7 @@ struct RootView: View {
                 microphoneFooter
                     .padding(12)
             }
-            .navigationTitle("Holo")
+            .navigationTitle("Sidetap")
             .navigationSplitViewColumnWidth(min: 176, ideal: 196, max: 230)
         } detail: {
             content
@@ -32,9 +32,15 @@ struct RootView: View {
                 .safeAreaInset(edge: .bottom) {
                     statusBar
                 }
+                .alert("You’re Away from Your Saved Desks", isPresented: $model.showsNewLocationSuggestion) {
+                    Button("Set Up Desk") { model.setUpDeskHere() }
+                    Button("Not Now", role: .cancel) {}
+                } message: {
+                    Text("Sidetap switches to a desk only within \(Int(HoloProfile.locationRadius)) m of where you set it up. To use Sidetap here, set up this desk. Until then, \(model.selectedProfile?.name ?? "the current desk") stays selected.")
+                }
         }
         .navigationSplitViewStyle(.balanced)
-        .alert("Holo", isPresented: Binding(
+        .alert("Sidetap", isPresented: Binding(
             get: { model.errorMessage != nil },
             set: { if !$0 { model.errorMessage = nil } }
         )) {
@@ -79,6 +85,18 @@ struct RootView: View {
                                 Label(profile.name, systemImage: "checkmark")
                             } else {
                                 Text(profile.name)
+                            }
+                        }
+                    }
+                    if let profile = model.selectedProfile {
+                        Divider()
+                        if profile.location == nil {
+                            Button("Use This Location for “\(profile.name)”") {
+                                model.pinSelectedProfileToCurrentLocation()
+                            }
+                        } else {
+                            Button("Forget Location for “\(profile.name)”") {
+                                model.forgetSelectedProfileLocation()
                             }
                         }
                     }

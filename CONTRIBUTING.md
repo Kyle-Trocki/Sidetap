@@ -1,6 +1,6 @@
-# Contributing to Holo
+# Contributing to Sidetap
 
-Holo is a research prototype, so the easiest contributions to review are ones
+Sidetap is a research prototype, so the easiest contributions to review are ones
 that keep the DSP test suite green and respect the four-zone design.
 
 ## Setup
@@ -59,7 +59,7 @@ DYLD_FRAMEWORK_PATH=/tmp/HoloSoakDerived/Build/Products/Release \
 
 ## Route check
 
-Check the current built-in hardware routes without opening Holo or requesting
+Check the current built-in hardware routes without opening Sidetap or requesting
 microphone access:
 
 ```sh

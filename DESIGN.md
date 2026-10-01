@@ -1,15 +1,15 @@
-# Holo interface direction
+# Sidetap interface direction
 
-Holo should feel like a quiet macOS instrument: spatial, precise, and calm. It should not look like a generic analytics dashboard or a science-fiction control panel.
+Sidetap should feel like a quiet macOS instrument: spatial, precise, and calm. It should not look like a generic analytics dashboard or a science-fiction control panel.
 
 References were reviewed on July 16, 2026.
 
 ## Reference lessons
 
 - Apple places Liquid Glass in the functional layer—navigation and controls—and recommends standard materials for content. Use system components first and custom glass sparingly. See [Materials](https://developer.apple.com/design/human-interface-guidelines/materials) and [Designing for macOS](https://developer.apple.com/design/human-interface-guidelines/designing-for-macos/).
-- Linear's 2026 refresh says interface elements should not compete for attention they have not earned, and that structure should be felt rather than seen. Holo therefore uses fewer icons, separators, borders, and elevated containers. See [A calmer interface for a product in motion](https://linear.app/now/behind-the-latest-design-refresh).
-- Things succeeds through a stable sidebar, a single obvious working area, progressive disclosure, and purposeful motion. Holo keeps advanced sensing and rejection controls out of the primary path. See [Things](https://culturedcode.com/things/).
-- Raycast's 2026 Mac redesign uses Liquid Glass in ways that support the function of a launcher while staying familiar and compact. Holo follows the same rule for its toolbar and primary controls. See [The New Raycast](https://www.raycast.com/blog/the-new-raycast).
+- Linear's 2026 refresh says interface elements should not compete for attention they have not earned, and that structure should be felt rather than seen. Sidetap therefore uses fewer icons, separators, borders, and elevated containers. See [A calmer interface for a product in motion](https://linear.app/now/behind-the-latest-design-refresh).
+- Things succeeds through a stable sidebar, a single obvious working area, progressive disclosure, and purposeful motion. Sidetap keeps advanced sensing and rejection controls out of the primary path. See [Things](https://culturedcode.com/things/).
+- Raycast's 2026 Mac redesign uses Liquid Glass in ways that support the function of a launcher while staying familiar and compact. Sidetap follows the same rule for its toolbar and primary controls. See [The New Raycast](https://www.raycast.com/blog/the-new-raycast).
 - Apple's recognition of iA Writer and Mela reinforces task focus, contextual dimming, and attention to interaction details over decoration. See the [2025 Apple Design Awards](https://developer.apple.com/design/awards/2025/).
 - The community-maintained [Slopless design directory](https://www.slopless.design/) is useful as a pattern audit, not a design authority: it identifies the repeated gradients, inflated cards, interchangeable dashboards, and filler copy that make generated interfaces converge on the same look.
 
@@ -28,14 +28,14 @@ References were reviewed on July 16, 2026.
 
 ## Signal-processing lessons
 
-- [Acustico](https://www.cs.dartmouth.edu/~hci/papers/Acustico.pdf) detects a surface tap as a short power pulse whose neighboring windows are substantially quieter. Holo applies the same temporal principle after capture, with deliberately looser thresholds because it has only the MacBook microphone rather than contact accelerometers.
-- Essentia's [EffectiveDuration](https://essentia.upf.edu/reference/std_EffectiveDuration.html) descriptor explicitly distinguishes percussive from sustained sounds using time above 40% of the envelope maximum. Holo combines that cue with late-to-impact energy and early-energy concentration; no single cue rejects an event by itself.
-- Research on [on-device mechano-acoustic touch classification](https://doi.org/10.3390/app11114834) supports combining temporal and spectral features with a learned classifier. Holo uses ten spatially varied captures per broad zone and a regularized linear boundary, while retaining nearest-example novelty and user-recorded negative checks.
+- [Acustico](https://www.cs.dartmouth.edu/~hci/papers/Acustico.pdf) detects a surface tap as a short power pulse whose neighboring windows are substantially quieter. Sidetap applies the same temporal principle after capture, with deliberately looser thresholds because it has only the MacBook microphone rather than contact accelerometers.
+- Essentia's [EffectiveDuration](https://essentia.upf.edu/reference/std_EffectiveDuration.html) descriptor explicitly distinguishes percussive from sustained sounds using time above 40% of the envelope maximum. Sidetap combines that cue with late-to-impact energy and early-energy concentration; no single cue rejects an event by itself.
+- Research on [on-device mechano-acoustic touch classification](https://doi.org/10.3390/app11114834) supports combining temporal and spectral features with a learned classifier. Sidetap uses ten spatially varied captures per broad zone and a regularized linear boundary, while retaining nearest-example novelty and user-recorded negative checks.
 
 ## Screen hierarchy
 
 - **Desk:** two continuous two-zone rails around one MacBook silhouette, one compact result strip, and no-profile onboarding in place. Individual zones are not rendered as four floating cards.
-- **Calibration:** one target at a time. Beginning setup is the explicit capture intent; Holo then collects ten clean taps spread across the highlighted area, disarms during each move, and automatically arms the next zone after a short transition. A visible Arm control remains available after a pause. A measured consistency check can redo the weakest zone before saving, and Talking rejection capture is surfaced as the recommended final step.
+- **Calibration:** one target at a time. Beginning setup is the explicit capture intent; Sidetap then collects ten clean taps spread across the highlighted area, disarms during each move, and automatically arms the next zone after a short transition. A visible Arm control remains available after a pause. A measured consistency check can redo the weakest zone before saving, and Talking rejection capture is surfaced as the recommended final step.
 - **Actions:** a four-row editor grouped by the left and right side of the MacBook. Native pickers progressively reveal only the fields needed for the selected action, including Shortcuts, app/file bookmarks, shell commands, and screenshots.
 - **Diagnostics:** factual hardware and signal details in a form, with sensing comparisons disclosed on demand.
 - **Accuracy Test:** a focused 60-tap run followed by a plain results table and four-by-four confusion matrix.

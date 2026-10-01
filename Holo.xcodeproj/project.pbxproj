@@ -1048,8 +1048,8 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.holo.app;
-				PRODUCT_NAME = Holo;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sidetap.app;
+				PRODUCT_NAME = Sidetap;
 				SDKROOT = macosx;
 			};
 			name = Release;
@@ -1284,8 +1284,8 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.holo.app;
-				PRODUCT_NAME = Holo;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sidetap.app;
+				PRODUCT_NAME = Sidetap;
 				SDKROOT = macosx;
 			};
 			name = Debug;

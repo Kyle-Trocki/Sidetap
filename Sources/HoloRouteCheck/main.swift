@@ -12,11 +12,11 @@ private func issueDescription(_ issue: AudioHardwarePolicyIssue) -> String {
     case .inputUnavailable:
         return "no input device"
     case .builtInInputRequired(let selected):
-        return "built-in microphone required; selected \(selected)"
+        return "no built-in microphone; default is \(selected)"
     case .outputUnavailable:
         return "no output device"
     case .builtInOutputRequired(let selected):
-        return "built-in speakers required; selected \(selected)"
+        return "no built-in speakers; default is \(selected)"
     }
 }
 

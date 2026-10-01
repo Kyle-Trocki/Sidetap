@@ -25,6 +25,41 @@ final class DetectorTests: XCTestCase {
         XCTAssertGreaterThan(events[0].onsetOffset, 0)
     }
 
+    func testTapLateInALargeBufferKeepsItsWholeWindow() {
+        // macOS delivers 100 ms buffers even when Sidetap requests 512 frames.
+        let detector = StreamingTapDetector(sampleRate: 48_000, channelCount: 1, warmUpDuration: 0)
+        let onset = 4_500
+        var signal = Array(repeating: Float(0.0004), count: 9_600)
+        for index in 0..<1_200 {
+            let t = Float(index) / 48_000
+            signal[onset + index] += 0.2 * exp(-Float(index) / 400) * sin(2 * .pi * 800 * t)
+        }
+
+        let events = detector.process(channels: [Array(signal[..<4_800])])
+            + detector.process(channels: [Array(signal[4_800...])])
+
+        XCTAssertEqual(events.count, 1)
+        XCTAssertEqual(events.first?.onsetOffset, detector.preRollSamples)
+        XCTAssertEqual(Double(events.first?.streamSampleIndex ?? 0), Double(onset), accuracy: 24)
+    }
+
+    func testTapShortlyAfterRejectedSpeechIsDetected() {
+        // Rejected speech from 19 ms, a real tap at 210 ms, in 100 ms buffers.
+        let sampleRate = 48_000.0
+        let detector = StreamingTapDetector(sampleRate: sampleRate, channelCount: 1, warmUpDuration: 0)
+        let speech = candidateSignal(sampleRate: sampleRate, onset: 900, kind: .speech, duration: 0.18)
+        let tapOnset = 10_080
+        let signal = speech + candidateSignal(sampleRate: sampleRate, onset: tapOnset - speech.count, kind: .tap, duration: 0.2)
+
+        var events: [DetectedTap] = []
+        for start in stride(from: 0, to: signal.count, by: 4_800) {
+            events += detector.process(channels: [Array(signal[start..<min(start + 4_800, signal.count)])])
+        }
+
+        XCTAssertEqual(events.count, 1)
+        XCTAssertEqual(Double(events.first?.streamSampleIndex ?? 0), Double(tapOnset), accuracy: 48)
+    }
+
     func testDetectorHonorsRefractoryPeriod() {
         let detector = StreamingTapDetector(
             sampleRate: 48_000,

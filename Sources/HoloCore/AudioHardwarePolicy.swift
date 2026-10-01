@@ -28,7 +28,7 @@ public enum AudioHardwarePolicyIssue: Equatable, Sendable {
 }
 
 public enum AudioHardwarePolicy {
-    /// Holo always requires the built-in microphone. Active and hybrid sensing also
+    /// Sidetap always requires the built-in microphone. Active and hybrid sensing also
     /// require built-in output because they emit a measurement probe.
     public static func issue(
         for route: AudioRouteInfo,

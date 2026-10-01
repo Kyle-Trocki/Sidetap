@@ -1,3 +1,4 @@
+import CoreLocation
 import XCTest
 @testable import HoloCore
 
@@ -50,6 +51,41 @@ final class PersistenceTests: XCTestCase {
         XCTAssertFalse(persistedJSON.contains("\"onsetOffset\""))
         XCTAssertFalse(persistedJSON.contains("\"streamSampleIndex\""))
         XCTAssertFalse(persistedData.starts(with: Data("RIFF".utf8)))
+    }
+
+    func testPinnedLocationRoundTripsAndSelectsNearestDesk() throws {
+        let temporary = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: temporary) }
+        let store = try ProfileStore(directory: temporary)
+        let classifier = try TrainedTapClassifier.train(positiveExamples: samples())
+        func profile(_ name: String, _ location: ProfileLocation?) -> HoloProfile {
+            var profile = HoloProfile(
+                name: name,
+                surfaceDescription: "Oak",
+                laptopPositionNote: "Centered",
+                classifier: classifier,
+                calibration: CalibrationSummary(
+                    sampleCount: DeskZone.allCases.count * 2,
+                    samplesPerZone: Array(repeating: 2, count: DeskZone.allCases.count),
+                    leaveOneOutAccuracy: 1
+                )
+            )
+            profile.location = location
+            return profile
+        }
+        let home = profile("Home", ProfileLocation(latitude: 40.7484, longitude: -73.9857))
+        let work = profile("Work", ProfileLocation(latitude: 40.7061, longitude: -74.0087))
+        let unpinned = profile("Travel", nil)
+        try [home, work, unpinned].forEach(store.save)
+
+        let loaded = try store.loadAll()
+        XCTAssertEqual(loaded.first { $0.id == home.id }?.location, home.location)
+        XCTAssertNil(loaded.first { $0.id == unpinned.id }?.location)
+
+        // About 50 m from each desk, then more than 5 km from both.
+        XCTAssertEqual(loaded.nearest(to: CLLocation(latitude: 40.7488, longitude: -73.9855))?.id, home.id)
+        XCTAssertEqual(loaded.nearest(to: CLLocation(latitude: 40.7064, longitude: -74.0090))?.id, work.id)
+        XCTAssertNil(loaded.nearest(to: CLLocation(latitude: 40.7900, longitude: -73.9500)))
     }
 
     func testLegacySixZoneProfileIsIgnoredBeforeZoneDecoding() throws {

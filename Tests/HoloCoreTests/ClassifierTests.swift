@@ -136,6 +136,24 @@ final class ClassifierTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(decision.confidence, ClassifierDefaults.minimumConfidence)
     }
 
+    func testDoubleTapRecognizerPairsTapsWithinTheGap() {
+        var recognizer = DoubleTapRecognizer()
+
+        // A lone tap produces nothing, and a second tap 0.2 s later completes the pair.
+        XCTAssertNil(recognizer.add(oneDimensionFeature(1), at: 10.0))
+        XCTAssertEqual(recognizer.add(oneDimensionFeature(3), at: 10.2)?.values, [2])
+
+        // The pair was consumed, so a third tap starts a new pair.
+        XCTAssertNil(recognizer.add(oneDimensionFeature(5), at: 10.4))
+        XCTAssertEqual(recognizer.add(oneDimensionFeature(7), at: 10.7)?.values, [6])
+
+        // Taps too far apart, or too close to be two taps, don't pair.
+        XCTAssertNil(recognizer.add(oneDimensionFeature(1), at: 20.0))
+        XCTAssertNil(recognizer.add(oneDimensionFeature(1), at: 21.0))
+        XCTAssertNil(recognizer.add(oneDimensionFeature(1), at: 21.05))
+        XCTAssertNotNil(recognizer.add(oneDimensionFeature(1), at: 21.3))
+    }
+
     func testLeaveOneOutEvaluationUsesEverySample() throws {
         let samples = trainingSamples()
         let result = try ClassifierEvaluator.leaveOneOut(samples, minimumConfidence: 0.2)

@@ -1,9 +1,11 @@
+import CoreLocation
 import Foundation
 
 public enum ZoneActionKind: String, CaseIterable, Codable, Sendable, Identifiable {
     case none
     case sound
     case copyText
+    case pasteText
     case speakText
     case openURL
     case runShortcut
@@ -20,6 +22,7 @@ public enum ZoneActionKind: String, CaseIterable, Codable, Sendable, Identifiabl
         case .none: return "Visual only"
         case .sound: return "Play sound"
         case .copyText: return "Copy text"
+        case .pasteText: return "Paste text"
         case .speakText: return "Speak text"
         case .openURL: return "Open website"
         case .runShortcut: return "Run Shortcut"
@@ -76,8 +79,24 @@ public struct CalibrationSummary: Codable, Equatable, Sendable {
     }
 }
 
+public struct ProfileLocation: Codable, Equatable, Sendable {
+    public var latitude: Double
+    public var longitude: Double
+
+    public init(latitude: Double, longitude: Double) {
+        self.latitude = latitude
+        self.longitude = longitude
+    }
+
+    public init(_ location: CLLocation) {
+        self.init(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude)
+    }
+}
+
 public struct HoloProfile: Codable, Equatable, Sendable, Identifiable {
     public static let currentVersion = 3
+    /// How close, in meters, the Mac must be to a pinned desk to switch to it.
+    public static let locationRadius: CLLocationDistance = 300
 
     public var version: Int
     public var id: UUID
@@ -89,6 +108,9 @@ public struct HoloProfile: Codable, Equatable, Sendable, Identifiable {
     public var classifier: TrainedTapClassifier
     public var calibration: CalibrationSummary
     public var zones: [ZoneConfiguration]
+    /// Where this desk is. Sidetap switches to the nearest pinned profile when
+    /// the Mac arrives there. Profiles saved before this field decode as nil.
+    public var location: ProfileLocation?
 
     public init(
         id: UUID = UUID(),
@@ -115,6 +137,19 @@ public struct HoloProfile: Codable, Equatable, Sendable, Identifiable {
 
     public func action(for zone: DeskZone) -> ZoneActionConfiguration {
         zones.first(where: { $0.zone == zone })?.action ?? ZoneActionConfiguration(kind: .none)
+    }
+}
+
+extension Array where Element == HoloProfile {
+    /// The pinned profile closest to `location`, or nil when none is within `radius` meters.
+    // ponytail: location alone can't tell apart two desks in one building; match Wi-Fi or displays too if that's needed.
+    public func nearest(to location: CLLocation, within radius: CLLocationDistance = HoloProfile.locationRadius) -> HoloProfile? {
+        let distances = compactMap { profile in
+            profile.location.map { pin in
+                (profile, location.distance(from: CLLocation(latitude: pin.latitude, longitude: pin.longitude)))
+            }
+        }
+        return distances.filter { $0.1 <= radius }.min { $0.1 < $1.1 }?.0
     }
 }
 

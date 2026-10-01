@@ -14,15 +14,72 @@ enum SystemAudioRouteError: Error, LocalizedError {
 }
 
 enum SystemAudioRouteInspector {
+    /// Reports the devices Sidetap pins capture and the probe to. These are the
+    /// built-in devices even when AirPods or a display are the system default.
+    /// The default appears only when no built-in device exists, so the policy
+    /// can name what it found.
     static func currentRoute() throws -> AudioRouteInfo {
-        let input = try endpoint(forDefaultDevice: kAudioHardwarePropertyDefaultInputDevice)
-        let output = try? endpoint(forDefaultDevice: kAudioHardwarePropertyDefaultOutputDevice)
+        let input = try routedDevice(isInput: true).map(endpoint)
+        let output = try? routedDevice(isInput: false).map(endpoint)
         return AudioRouteInfo(input: input, output: output)
     }
 
-    private static func endpoint(
-        forDefaultDevice selector: AudioObjectPropertySelector
-    ) throws -> AudioEndpointInfo? {
+    /// The default device when it is built in; otherwise the first built-in
+    /// device with streams in that direction.
+    static func builtInDevice(isInput: Bool) throws -> AudioDeviceID? {
+        if let device = try defaultDevice(isInput: isInput), try transportType(device) == kAudioDeviceTransportTypeBuiltIn {
+            return device
+        }
+        return try allDevices().first { device in
+            (try? transportType(device)) == kAudioDeviceTransportTypeBuiltIn && hasStreams(device, isInput: isInput)
+        }
+    }
+
+    private static func routedDevice(isInput: Bool) throws -> AudioDeviceID? {
+        try builtInDevice(isInput: isInput) ?? defaultDevice(isInput: isInput)
+    }
+
+    private static func endpoint(_ deviceID: AudioDeviceID) throws -> AudioEndpointInfo {
+        let name = (try? deviceName(deviceID)) ?? "Unknown audio device"
+        let transport = try transportType(deviceID)
+        return AudioEndpointInfo(
+            name: name,
+            isBuiltIn: transport == kAudioDeviceTransportTypeBuiltIn
+        )
+    }
+
+    private static func allDevices() throws -> [AudioDeviceID] {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var size: UInt32 = 0
+        var status = AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size)
+        guard status == noErr else {
+            throw SystemAudioRouteError.propertyReadFailed(selector: kAudioHardwarePropertyDevices, status: status)
+        }
+        var devices = [AudioDeviceID](repeating: 0, count: Int(size) / MemoryLayout<AudioDeviceID>.size)
+        status = AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &devices)
+        guard status == noErr else {
+            throw SystemAudioRouteError.propertyReadFailed(selector: kAudioHardwarePropertyDevices, status: status)
+        }
+        // A device can disappear between the two reads; size then shrinks.
+        return Array(devices.prefix(Int(size) / MemoryLayout<AudioDeviceID>.size))
+    }
+
+    private static func hasStreams(_ deviceID: AudioDeviceID, isInput: Bool) -> Bool {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyStreams,
+            mScope: isInput ? kAudioObjectPropertyScopeInput : kAudioObjectPropertyScopeOutput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var size: UInt32 = 0
+        return AudioObjectGetPropertyDataSize(deviceID, &address, 0, nil, &size) == noErr && size > 0
+    }
+
+    private static func defaultDevice(isInput: Bool) throws -> AudioDeviceID? {
+        let selector = isInput ? kAudioHardwarePropertyDefaultInputDevice : kAudioHardwarePropertyDefaultOutputDevice
         var address = AudioObjectPropertyAddress(
             mSelector: selector,
             mScope: kAudioObjectPropertyScopeGlobal,
@@ -41,14 +98,7 @@ enum SystemAudioRouteInspector {
         guard status == noErr else {
             throw SystemAudioRouteError.propertyReadFailed(selector: selector, status: status)
         }
-        guard deviceID != kAudioObjectUnknown else { return nil }
-
-        let name = (try? deviceName(deviceID)) ?? "Unknown audio device"
-        let transport = try transportType(deviceID)
-        return AudioEndpointInfo(
-            name: name,
-            isBuiltIn: transport == kAudioDeviceTransportTypeBuiltIn
-        )
+        return deviceID == kAudioObjectUnknown ? nil : deviceID
     }
 
     private static func deviceName(_ deviceID: AudioDeviceID) throws -> String {

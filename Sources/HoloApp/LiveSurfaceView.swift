@@ -45,7 +45,7 @@ struct LiveSurfaceView: View {
                 .foregroundStyle(.secondary)
             Text("Set up the desk around your MacBook")
                 .font(.title2.weight(.semibold))
-            Text("Taps cannot be assigned until Holo learns this desk. You will tap ten times across each of four broad zones: rear and front on both sides of the MacBook.")
+            Text("Taps cannot be assigned until Sidetap learns this desk. You will tap ten times across each of four broad zones: rear and front on both sides of the MacBook.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -102,8 +102,8 @@ struct LiveSurfaceView: View {
     }
 
     private var lastResultTitle: String {
-        guard let decision = model.lastDecision else { return "Waiting for a tap" }
-        return decision.zone?.displayName ?? "Tap rejected"
+        guard let decision = model.lastDecision else { return "Waiting for a double tap" }
+        return decision.zone?.displayName ?? "Double tap rejected"
     }
 
     private func compactGauge(_ label: String, value: Double) -> some View {

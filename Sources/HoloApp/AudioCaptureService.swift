@@ -23,7 +23,7 @@ enum AudioCaptureError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .microphonePermissionDenied:
-            return "Microphone access is required. Enable Holo in System Settings › Privacy & Security › Microphone."
+            return "Microphone access is required. Enable Sidetap in System Settings › Privacy & Security › Microphone."
         case .noInputChannels:
             return "The selected audio input exposes no microphone channels."
         case .invalidAudioFormat:
@@ -31,9 +31,9 @@ enum AudioCaptureError: Error, LocalizedError {
         case .audioRouteUnavailable(let detail):
             return detail
         case .builtInInputRequired(let selected):
-            return "Holo requires the MacBook's built-in microphone. The current input is \(selected). Select MacBook Microphone in System Settings › Sound › Input, then press Resume."
+            return "Sidetap requires the MacBook's built-in microphone and can't find it. The default input is \(selected)."
         case .builtInOutputRequired(let selected):
-            return "Active and Hybrid sensing require the MacBook's built-in speakers. The current output is \(selected). Select MacBook Speakers in System Settings › Sound › Output, or use Passive sensing."
+            return "Active and Hybrid sensing require the MacBook's built-in speakers and can't find them. The default output is \(selected). Use Passive sensing instead."
         }
     }
 }
@@ -63,8 +63,11 @@ final class AudioCaptureService: ObservableObject {
     var onRouteInvalidated: ((String) -> Void)?
 
     private var engine: AVAudioEngine?
+    // On macOS an engine's input and output share one I/O unit, so pinning the
+    // microphone and the speakers needs a second engine for the probe.
+    private var probeEngine: AVAudioEngine?
     private var probePlayer: AVAudioPlayerNode?
-    private var configurationObserver: NSObjectProtocol?
+    private var configurationObservers: [NSObjectProtocol] = []
     nonisolated private let processingQueue = DispatchQueue(label: "com.holo.audio-analysis", qos: .userInteractive)
     nonisolated(unsafe) private var detector: StreamingTapDetector?
     nonisolated(unsafe) private var extractor: TapFeatureExtractor?
@@ -144,6 +147,7 @@ final class AudioCaptureService: ObservableObject {
 
         let engine = AVAudioEngine()
         let input = engine.inputNode
+        try Self.pinToBuiltInDevice(input, isInput: true)
         let format = input.outputFormat(forBus: 0)
         guard format.channelCount > 0 else { throw AudioCaptureError.noInputChannels }
         guard format.sampleRate > 0, format.commonFormat == .pcmFormatFloat32 else {
@@ -161,9 +165,7 @@ final class AudioCaptureService: ObservableObject {
             callbackCounter = 0
         }
 
-        if strategy != .passive {
-            configureProbe(on: engine, sampleRate: format.sampleRate)
-        }
+        let probeEngine = strategy == .passive ? nil : try makeProbeEngine(sampleRate: format.sampleRate)
 
         let fallbackInputLatency = inputLatencySeconds
         let generation = captureGeneration
@@ -193,16 +195,18 @@ final class AudioCaptureService: ObservableObject {
             }
         }
 
+        self.engine = engine
+        self.probeEngine = probeEngine
         engine.prepare()
         do {
             try engine.start()
+            try probeEngine?.start()
         } catch {
-            input.removeTap(onBus: 0)
+            stopCapture()
             lastError = error.localizedDescription
             throw error
         }
         probePlayer?.play()
-        self.engine = engine
         diagnostics = MicrophoneDiagnostics(
             deviceName: route.input?.name ?? AVCaptureDevice.default(for: .audio)?.localizedName ?? "Default system input",
             audioRoute: route,
@@ -218,7 +222,7 @@ final class AudioCaptureService: ObservableObject {
         )
         lastError = nil
         isListening = true
-        observeConfigurationChanges(for: engine)
+        observeConfigurationChanges(for: [engine, probeEngine].compactMap { $0 })
     }
 
     func stop() {
@@ -229,12 +233,12 @@ final class AudioCaptureService: ObservableObject {
 
     private func stopCapture() {
         captureGeneration &+= 1
-        if let configurationObserver {
-            NotificationCenter.default.removeObserver(configurationObserver)
-            self.configurationObserver = nil
-        }
+        configurationObservers.forEach(NotificationCenter.default.removeObserver)
+        configurationObservers = []
         probePlayer?.stop()
         probePlayer = nil
+        probeEngine?.stop()
+        probeEngine = nil
         if let engine {
             engine.inputNode.removeTap(onBus: 0)
             engine.stop()
@@ -295,14 +299,16 @@ final class AudioCaptureService: ObservableObject {
         }
     }
 
-    private func observeConfigurationChanges(for engine: AVAudioEngine) {
-        configurationObserver = NotificationCenter.default.addObserver(
-            forName: .AVAudioEngineConfigurationChange,
-            object: engine,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.handleConfigurationChange()
+    private func observeConfigurationChanges(for engines: [AVAudioEngine]) {
+        configurationObservers = engines.map { engine in
+            NotificationCenter.default.addObserver(
+                forName: .AVAudioEngineConfigurationChange,
+                object: engine,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.handleConfigurationChange()
+                }
             }
         }
     }
@@ -315,7 +321,7 @@ final class AudioCaptureService: ObservableObject {
             diagnostics.deviceName = route.input?.name ?? "No input"
             if let issue = AudioHardwarePolicy.issue(for: route, strategy: strategy) {
                 invalidateRoute(with: Self.captureError(for: issue))
-            } else if engine?.isRunning != true {
+            } else if engine?.isRunning != true || probeEngine?.isRunning == false {
                 invalidateRoute(with: .audioRouteUnavailable(
                     "The audio device changed and capture stopped. Confirm the built-in routes, then press Resume."
                 ))
@@ -332,8 +338,30 @@ final class AudioCaptureService: ObservableObject {
         onRouteInvalidated?(message)
     }
 
-    private func configureProbe(on engine: AVAudioEngine, sampleRate: Double) {
-        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1) else { return }
+    /// Points an engine's I/O unit at the built-in device, so AirPods or a
+    /// display can stay the system default without changing the signal path.
+    private static func pinToBuiltInDevice(_ node: AVAudioIONode, isInput: Bool) throws {
+        guard var device = try SystemAudioRouteInspector.builtInDevice(isInput: isInput),
+              let unit = node.audioUnit else { return }
+        let status = AudioUnitSetProperty(
+            unit,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &device,
+            UInt32(MemoryLayout<AudioDeviceID>.size)
+        )
+        guard status == noErr else {
+            throw AudioCaptureError.audioRouteUnavailable(
+                "Sidetap couldn't switch to the built-in \(isInput ? "microphone" : "speakers") (error \(status))."
+            )
+        }
+    }
+
+    private func makeProbeEngine(sampleRate: Double) throws -> AVAudioEngine? {
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1) else { return nil }
+        let engine = AVAudioEngine()
+        try Self.pinToBuiltInDevice(engine.outputNode, isInput: false)
         let player = AVAudioPlayerNode()
         engine.attach(player)
         engine.connect(player, to: engine.mainMixerNode, format: format)
@@ -342,7 +370,7 @@ final class AudioCaptureService: ObservableObject {
         guard let buffer = AVAudioPCMBuffer(
             pcmFormat: format,
             frameCapacity: AVAudioFrameCount(periodFrames)
-        ), let samples = buffer.floatChannelData?[0] else { return }
+        ), let samples = buffer.floatChannelData?[0] else { return nil }
         buffer.frameLength = AVAudioFrameCount(periodFrames)
         let chirp = ActiveProbe.chirp(sampleRate: sampleRate)
         for index in 0..<periodFrames {
@@ -351,6 +379,8 @@ final class AudioCaptureService: ObservableObject {
         player.volume = 0.55
         player.scheduleBuffer(buffer, at: nil, options: .loops)
         probePlayer = player
+        engine.prepare()
+        return engine
     }
 
     nonisolated private func process(

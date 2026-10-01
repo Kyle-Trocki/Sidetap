@@ -114,11 +114,16 @@ public final class StreamingTapDetector {
 
         if isImpulse {
             let crossing = onsetSignal.firstIndex { abs(Double($0)) >= peakThreshold } ?? 0
-            capture = preRoll
-            captureOnsetOffset = (preRoll.first?.count ?? 0) + crossing
+            // Start the window one pre-roll before the onset, not at the buffer
+            // start. macOS delivers 100 ms buffers even when 512 frames are
+            // requested, and a window anchored to the buffer start cuts off any
+            // tap that begins more than 78 ms (window minus pre-roll) into it.
+            let heldBefore = preRoll.first?.count ?? 0
+            let start = max(heldBefore + crossing - preRollSamples, 0)
+            capture = zip(preRoll, channels).map { held, incoming in Array((held + incoming)[start...]) }
+            captureOnsetOffset = heldBefore + crossing - start
             captureStreamIndex = totalSamples + Int64(crossing)
             captureNoiseFloor = noiseFloorRMS
-            appendToCapture(channels)
             if let event = completeCaptureIfReady() {
                 return [event]
             }
@@ -219,10 +224,18 @@ public final class StreamingTapDetector {
         let accepted = ImpactEventGate.accepts(event, sampleRate: sampleRate)
         capture = nil
         preRoll = Array(repeating: [], count: channelCount)
-        refractorySamplesRemaining = Int(sampleRate * 0.14)
         // A rejected sustained event is likely speech or a changed background.
         // Let the floor follow it during the refractory period so conversation
-        // cannot repeatedly re-arm the detector every 140 ms.
+        // cannot repeatedly re-arm the detector. Keep that period short: with
+        // 100 ms buffers, 140 ms skipped two whole buffers, and a real tap right
+        // after a rejected sound was lost. An accepted tap gets no refractory
+        // period at all, so the second tap of a double tap is heard; the onset
+        // contrast check already keeps a tap's own ring-down from re-triggering
+        // (measured: 0 of 77 taps counted twice).
+        // ponytail: a second tap in the same 100 ms buffer as the end of the
+        // first tap's window is still dropped; rescan the leftover samples if
+        // double taps faster than about 0.2 s need to work.
+        refractorySamplesRemaining = accepted ? 0 : Int(sampleRate * 0.05)
         adaptNoiseDuringRefractory = !accepted
         return accepted ? event : nil
     }

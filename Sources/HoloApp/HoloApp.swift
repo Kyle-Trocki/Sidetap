@@ -13,14 +13,14 @@ struct HoloApp: App {
     @StateObject private var model = AppModel()
 
     var body: some Scene {
-        Window("Holo", id: "main") {
+        Window("Sidetap", id: "main") {
             RootView(model: model)
                 .frame(minWidth: 1_020, minHeight: 680)
                 .task { await model.activateOnLaunch() }
         }
         .defaultSize(width: 1_180, height: 760)
         .commands {
-            CommandMenu("Holo") {
+            CommandMenu("Sidetap") {
                 if model.selectedProfile == nil && model.guidedSection == nil {
                     Button("Set Up Desk") {
                         model.openSetup()

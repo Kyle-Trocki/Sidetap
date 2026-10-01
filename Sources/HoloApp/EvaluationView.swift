@@ -36,7 +36,7 @@ struct EvaluationView: View {
             VStack(spacing: 7) {
                 Text("Test your calibration")
                     .font(.title.weight(.semibold))
-                Text("Use new taps that were not part of calibration. Holo guides \(EvaluationAcceptance.tapsPerZone) taps in each zone and counts rejected taps as incorrect.")
+                Text("Use new double taps that were not part of calibration. Sidetap guides \(EvaluationAcceptance.tapsPerZone) double taps in each zone and counts rejected ones as incorrect.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -45,7 +45,7 @@ struct EvaluationView: View {
 
             Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 10) {
                 acceptanceRow(
-                    "Taps",
+                    "Double taps",
                     "\(DeskZone.allCases.count * EvaluationAcceptance.tapsPerZone) total · \(EvaluationAcceptance.tapsPerZone) per zone"
                 )
                 acceptanceRow(
@@ -75,7 +75,7 @@ struct EvaluationView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(session.currentZone?.displayName ?? "Complete")
                             .font(.title.weight(.semibold))
-                        Text("Tap the highlighted zone naturally.")
+                        Text("Double-tap the highlighted zone naturally.")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }
@@ -88,7 +88,7 @@ struct EvaluationView: View {
                 ProgressView(value: session.progress)
                     .accessibilityLabel("Evaluation progress")
                     .accessibilityValue(
-                        "\(session.records.count) of \(DeskZone.allCases.count * session.targetPerZone) taps completed"
+                        "\(session.records.count) of \(DeskZone.allCases.count * session.targetPerZone) double taps completed"
                     )
 
                 DeskMapView(
@@ -121,7 +121,7 @@ struct EvaluationView: View {
                                 .font(.headline)
                             if let zone = session.currentZone {
                                 let count = session.records.filter { $0.expectedZone == zone }.count
-                                Text("Tap \(count + 1) of \(session.targetPerZone)")
+                                Text("Double tap \(count + 1) of \(session.targetPerZone)")
                                     .font(.callout.monospacedDigit())
                                     .foregroundStyle(.secondary)
                             }
@@ -138,7 +138,7 @@ struct EvaluationView: View {
                             .disabled(!model.audio.isListening)
                             .help(model.audio.isListening ? "Start testing this zone" : "Resume the microphone before arming")
                             .accessibilityHint(model.audio.isListening
-                                ? "Starts listening for evaluation taps in this zone."
+                                ? "Starts listening for evaluation double taps in this zone."
                                 : "The microphone is paused. Resume it before arming.")
                     }
 
@@ -201,7 +201,7 @@ struct EvaluationView: View {
                                 ? "\(DeskZone.allCases.count) × \(EvaluationAcceptance.tapsPerZone)"
                                 : "No"
                         )
-                        summaryRow("Rejected taps", "\(report.records.filter { $0.predictedZone == nil }.count)")
+                        summaryRow("Rejected double taps", "\(report.records.filter { $0.predictedZone == nil }.count)")
                     }
                     .font(.callout)
                 }
@@ -240,7 +240,7 @@ struct EvaluationView: View {
                 confusionMatrix(report)
 
                 if model.latestEvaluationIsPersisted {
-                    Text("JSON and CSV reports are saved locally in Holo's Application Support folder.")
+                    Text("JSON and CSV reports are saved locally in Sidetap's Application Support folder.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {

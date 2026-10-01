@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import CoreLocation
 import Foundation
 import HoloCore
 
@@ -33,7 +34,7 @@ enum HoloStorageError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unavailable(let area):
-            return "\(area) storage is unavailable. Holo did not save this change."
+            return "\(area) storage is unavailable. Sidetap did not save this change."
         }
     }
 }
@@ -61,6 +62,7 @@ final class AppModel: ObservableObject {
     @Published var debugRecordingEnabled = false
     @Published private(set) var hasDebugRecordings = false
     @Published var errorMessage: String?
+    @Published var showsNewLocationSuggestion = false
 
     let audio = AudioCaptureService()
     @Published var calibrationDraft = CalibrationDraft()
@@ -70,6 +72,11 @@ final class AppModel: ObservableObject {
     private let comparisonStore: ApproachComparisonStore?
     private let debugStore: DebugRecordingStore?
     private let actionDispatcher = LocalActionDispatcher()
+    private let locator = DeskLocator()
+    private var latestLocation: CLLocation?
+    private var suggestedLocation: CLLocation?
+    private var pinPendingProfileID: UUID?
+    private var doubleTap = DoubleTapRecognizer()
     private var recalibratingProfileID: UUID?
     private var calibrationAcceptAfter = Date.distantPast
     private var evaluationAcceptAfter = Date.distantPast
@@ -143,6 +150,17 @@ final class AppModel: ObservableObject {
         }
         actionDispatcher.onAsyncError = { [weak self] error in
             self?.errorMessage = "The assigned action failed. \(error.localizedDescription)"
+        }
+        locator.onUpdate = { [weak self] location in
+            self?.handleLocation(location)
+        }
+        locator.onDenied = { [weak self] in
+            guard let self, self.pinPendingProfileID != nil else { return }
+            self.pinPendingProfileID = nil
+            self.errorMessage = "Location access is off. To switch desks automatically, turn on Sidetap in System Settings › Privacy & Security › Location Services."
+        }
+        if profiles.contains(where: { $0.location != nil }) {
+            locator.start()
         }
         audio.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
@@ -438,6 +456,8 @@ final class AppModel: ObservableObject {
                 zones: oldProfile?.zones ?? DeskZone.allCases.map { ZoneConfiguration(zone: $0) }
             )
             if let oldProfile { profile.createdAt = oldProfile.createdAt }
+            // A new desk set up while location switching is on belongs to this location.
+            profile.location = oldProfile.map(\.location) ?? latestLocation.map(ProfileLocation.init)
             guard let profileStore else { throw HoloStorageError.unavailable("Desk profile") }
             try profileStore.save(profile)
             if let index = profiles.firstIndex(where: { $0.id == profile.id }) {
@@ -639,6 +659,70 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func pinSelectedProfileToCurrentLocation() {
+        guard let id = selectedProfileID else { return }
+        pinPendingProfileID = id
+        statusMessage = "Finding this location…"
+        locator.start()
+    }
+
+    func forgetSelectedProfileLocation() {
+        guard let id = selectedProfileID, setLocation(nil, forProfile: id) else { return }
+        statusMessage = "Location removed"
+        if !profiles.contains(where: { $0.location != nil }) {
+            locator.stop()
+            latestLocation = nil
+        }
+    }
+
+    func setUpDeskHere() {
+        guard guidedSection == nil else { return }
+        calibrationDraft = CalibrationDraft(name: "New Desk")
+        section = .calibrate
+        statusMessage = "New location • create a new profile for this desk"
+    }
+
+    private func handleLocation(_ location: CLLocation) {
+        latestLocation = location
+        if let id = pinPendingProfileID {
+            pinPendingProfileID = nil
+            if setLocation(ProfileLocation(location), forProfile: id),
+               let profile = profiles.first(where: { $0.id == id }) {
+                statusMessage = "\(profile.name) loads automatically at this location"
+            }
+        }
+        guard guidedSection == nil else { return }
+
+        if let desk = profiles.nearest(to: location) {
+            suggestedLocation = nil
+            showsNewLocationSuggestion = false
+            if desk.id != selectedProfileID {
+                selectProfile(desk.id)
+                statusMessage = "Switched to \(desk.name) for this location"
+            }
+        } else if suggestedLocation.map({ $0.distance(from: location) > HoloProfile.locationRadius }) ?? true {
+            // Suggest once per place, not on every fix while the Mac stays there.
+            suggestedLocation = location
+            showsNewLocationSuggestion = true
+        }
+    }
+
+    @discardableResult
+    private func setLocation(_ location: ProfileLocation?, forProfile id: UUID) -> Bool {
+        guard let index = profiles.firstIndex(where: { $0.id == id }) else { return false }
+        var updatedProfile = profiles[index]
+        updatedProfile.location = location
+        do {
+            guard let profileStore else { throw HoloStorageError.unavailable("Desk profile") }
+            try profileStore.save(updatedProfile)
+            profiles[index] = updatedProfile
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
     func testAction(_ action: ZoneActionConfiguration) {
         do { try actionDispatcher.perform(action) }
         catch { errorMessage = error.localizedDescription }
@@ -696,14 +780,19 @@ final class AppModel: ObservableObject {
 
         if var evaluation = evaluationSession, let profile = selectedProfile, let expected = evaluation.currentZone {
             guard evaluation.isArmed, Date() >= evaluationAcceptAfter else { return }
-            var decision = profile.classifier.predict(observation.feature)
+            // One trial per double tap; the first tap alone records nothing.
+            guard let feature = doubleTap.add(observation.feature, at: observation.eventHostTimeSeconds) else {
+                statusMessage = "Accuracy test • tap again to complete the double tap"
+                return
+            }
+            var decision = profile.classifier.predict(feature)
             decision.processingLatencyMilliseconds = observation.processingLatencyMilliseconds
             evaluation.records.append(EvaluationRecord(
                 expectedZone: expected,
                 decision: decision,
                 responseLatencyMilliseconds: responseLatencyMilliseconds(for: observation),
-                capturedAt: observation.feature.capturedAt,
-                feature: observation.feature
+                capturedAt: feature.capturedAt,
+                feature: feature
             ))
             present(decision)
             evaluationAcceptAfter = Date().addingTimeInterval(0.40)
@@ -743,7 +832,20 @@ final class AppModel: ObservableObject {
             statusMessage = "Tap detected • calibrate to identify its zone"
             return
         }
-        var decision = profile.classifier.predict(observation.feature)
+        if observation.feature.quality.noiseFloorRMS > SignalQuality.maximumRoomNoiseFloorRMS {
+            statusMessage = "Room too noisy • actions paused"
+            return
+        }
+        if followsTypingOrClick(observation) {
+            statusMessage = "Tap ignored • typing or clicking"
+            return
+        }
+        // Actions run on double taps only; both taps vote on the zone.
+        guard let feature = doubleTap.add(observation.feature, at: observation.eventHostTimeSeconds) else {
+            statusMessage = "Tap heard • tap again to run the action"
+            return
+        }
+        var decision = profile.classifier.predict(feature)
         decision.processingLatencyMilliseconds = observation.processingLatencyMilliseconds
         present(decision)
         if let zone = decision.zone {
@@ -799,7 +901,7 @@ final class AppModel: ObservableObject {
                 } catch {
                     calibrationValidation = nil
                     statusMessage = "Calibration review unavailable"
-                    errorMessage = "Holo could not review calibration consistency. \(error.localizedDescription)"
+                    errorMessage = "Sidetap could not review calibration consistency. \(error.localizedDescription)"
                 }
             }
         } else if let label = session.negativeLabel {
@@ -921,6 +1023,25 @@ final class AppModel: ObservableObject {
         return formatter.string(from: Date())
     }
 
+    /// A keystroke or trackpad click shakes the MacBook like a tap, and no
+    /// frequency filter tells them apart, so taps near one are ignored. Only
+    /// the live path checks this; calibration still records typing as a
+    /// negative example. Only physical input counts, so the ⌘V that the Paste
+    /// text action sends doesn't look like typing.
+    private func followsTypingOrClick(_ observation: TapObservation) -> Bool {
+        let inputs: [CGEventType] = [
+            .keyDown, .keyUp, .flagsChanged,
+            .leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp
+        ]
+        let secondsSinceInput = inputs
+            .map { CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: $0) }
+            .min() ?? .infinity
+        let lastInputHostTime = ProcessInfo.processInfo.systemUptime - secondsSinceInput
+        // Also covers input after the tap: the 90 ms analysis window means the
+        // check runs a little after the sound.
+        return lastInputHostTime >= observation.eventHostTimeSeconds - 0.3
+    }
+
     private func responseLatencyMilliseconds(for observation: TapObservation) -> Double {
         AudioTimeline.elapsedMilliseconds(
             since: observation.eventHostTimeSeconds,
@@ -988,5 +1109,45 @@ final class AppModel: ObservableObject {
             laptopPositionNote: profile.laptopPositionNote,
             strategy: applicableApproachComparison?.selectedStrategy ?? profile.sensingStrategy
         )
+    }
+}
+
+/// Delivers location fixes precise enough to tell desks apart.
+final class DeskLocator: NSObject, CLLocationManagerDelegate {
+    var onUpdate: ((CLLocation) -> Void)?
+    var onDenied: (() -> Void)?
+    private let manager = CLLocationManager()
+
+    override init() {
+        super.init()
+        manager.delegate = self
+        manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+        manager.distanceFilter = 100
+    }
+
+    /// Restarting always delivers a fresh fix, even if the Mac hasn't moved.
+    func start() {
+        manager.requestWhenInUseAuthorization()
+        manager.stopUpdatingLocation()
+        manager.startUpdatingLocation()
+    }
+
+    func stop() {
+        manager.stopUpdatingLocation()
+    }
+
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        // A fix coarser than the switching radius, such as one from an IP
+        // address, can't tell desks apart.
+        guard let location = locations.last,
+              location.horizontalAccuracy >= 0,
+              location.horizontalAccuracy <= HoloProfile.locationRadius else { return }
+        onUpdate?(location)
+    }
+
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        if manager.authorizationStatus == .denied || manager.authorizationStatus == .restricted {
+            onDenied?()
+        }
     }
 }
