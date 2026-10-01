@@ -46,6 +46,8 @@ final class AppModel: ObservableObject {
     @Published var selectedProfileID: UUID?
     @Published private(set) var activeZone: DeskZone?
     @Published private(set) var lastDecision: ClassificationDecision?
+    @Published private(set) var lastGesture: TapGesture?
+    @Published private(set) var pendingTapCount = 0
     @Published private(set) var statusMessage = "Ready to map your desk"
     @Published private(set) var calibrationSession: CalibrationSession?
     @Published private(set) var calibrationValidation: CrossValidationResult?
@@ -77,6 +79,8 @@ final class AppModel: ObservableObject {
     private var suggestedLocation: CLLocation?
     private var pinPendingProfileID: UUID?
     private var doubleTap = DoubleTapRecognizer()
+    private var gesture = TapGestureCounter()
+    private var gestureTask: Task<Void, Never>?
     private var recalibratingProfileID: UUID?
     private var calibrationAcceptAfter = Date.distantPast
     private var evaluationAcceptAfter = Date.distantPast
@@ -456,6 +460,8 @@ final class AppModel: ObservableObject {
                 zones: oldProfile?.zones ?? DeskZone.allCases.map { ZoneConfiguration(zone: $0) }
             )
             if let oldProfile { profile.createdAt = oldProfile.createdAt }
+            profile.doubleTapAction = oldProfile?.doubleTapAction
+            profile.tripleTapAction = oldProfile?.tripleTapAction
             // A new desk set up while location switching is on belongs to this location.
             profile.location = oldProfile.map(\.location) ?? latestLocation.map(ProfileLocation.init)
             guard let profileStore else { throw SidetapStorageError.unavailable("Desk profile") }
@@ -643,11 +649,10 @@ final class AppModel: ObservableObject {
     }
 
     @discardableResult
-    func updateAction(for zone: DeskZone, action: ZoneActionConfiguration) -> Bool {
-        guard let profileIndex = profiles.firstIndex(where: { $0.id == selectedProfileID }),
-              let zoneIndex = profiles[profileIndex].zones.firstIndex(where: { $0.zone == zone }) else { return false }
+    func updateAction(for gesture: TapGesture, action: ZoneActionConfiguration) -> Bool {
+        guard let profileIndex = profiles.firstIndex(where: { $0.id == selectedProfileID }) else { return false }
         var updatedProfile = profiles[profileIndex]
-        updatedProfile.zones[zoneIndex].action = action
+        updatedProfile.setAction(action, for: gesture)
         do {
             guard let profileStore else { throw SidetapStorageError.unavailable("Desk profile") }
             try profileStore.save(updatedProfile)
@@ -840,30 +845,51 @@ final class AppModel: ObservableObject {
             statusMessage = "Tap ignored • typing or clicking"
             return
         }
-        // Actions run on double taps only; both taps vote on the zone.
-        guard let feature = doubleTap.add(observation.feature, at: observation.eventHostTimeSeconds) else {
-            statusMessage = "Tap heard • tap again to run the action"
+        // Gestures count taps anywhere on the desk. The classifier only has to
+        // agree that the sound is a tap on this desk, not which zone it was in.
+        var decision = profile.classifier.predict(observation.feature)
+        decision.processingLatencyMilliseconds = observation.processingLatencyMilliseconds
+        lastDecision = decision
+        guard decision.isTap else {
+            statusMessage = "Rejected • \(decision.rejectionReason?.displayName ?? "low confidence")"
             return
         }
-        var decision = profile.classifier.predict(feature)
-        decision.processingLatencyMilliseconds = observation.processingLatencyMilliseconds
-        present(decision)
-        if let zone = decision.zone {
-            if LocalActionDispatchPolicy.allowsAutomaticDispatch(
-                for: decision,
-                isDeskActive: section == .live
-            ) {
-                statusMessage = "\(zone.displayName) • \(Int(decision.confidence * 100))% confidence"
-                do { try actionDispatcher.perform(profile.action(for: zone)) }
-                catch {
-                    statusMessage = "\(zone.displayName) accepted • action failed"
-                    errorMessage = error.localizedDescription
-                }
-            } else {
-                statusMessage = "\(zone.displayName) detected • actions paused outside Desk"
-            }
-        } else {
-            statusMessage = "Rejected • \(decision.rejectionReason?.displayName ?? "low confidence")"
+        let count = gesture.add(at: observation.eventHostTimeSeconds)
+        gestureTask?.cancel()
+        guard count < TapGesture.triple.rawValue else {
+            completeGesture()
+            return
+        }
+        pendingTapCount = count
+        statusMessage = count == 1 ? "Tap heard • tap again" : "Double tap • waiting in case of a third tap"
+        // The next tap can start up to maximumGap after this one, and a tap
+        // takes about 0.25 s to be detected (measured: 213 ms at the 90th percentile).
+        let deadline = observation.eventHostTimeSeconds + TapGestureCounter.maximumGap + 0.25
+        gestureTask = Task { [weak self] in
+            let wait = deadline - ProcessInfo.processInfo.systemUptime
+            if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
+            guard !Task.isCancelled else { return }
+            self?.completeGesture()
+        }
+    }
+
+    private func completeGesture() {
+        gestureTask?.cancel()
+        pendingTapCount = 0
+        guard let profile = selectedProfile, let completed = TapGesture(rawValue: gesture.finish()) else {
+            statusMessage = "Single tap ignored"
+            return
+        }
+        lastGesture = completed
+        guard section == .live else {
+            statusMessage = "\(completed.displayName) • actions paused outside Desk"
+            return
+        }
+        statusMessage = completed.displayName
+        do { try actionDispatcher.perform(profile.action(for: completed)) }
+        catch {
+            statusMessage = "\(completed.displayName) • action failed"
+            errorMessage = error.localizedDescription
         }
     }
 

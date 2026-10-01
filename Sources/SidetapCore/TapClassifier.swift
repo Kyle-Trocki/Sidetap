@@ -42,6 +42,10 @@ public struct ClassificationDecision: Codable, Equatable, Sendable {
     }
 
     public var wasAccepted: Bool { zone != nil && rejectionReason == nil }
+
+    /// Whether the sound is a tap on this desk, whichever zone it came from.
+    /// Gestures count taps, so an unclear zone is no reason to drop one.
+    public var isTap: Bool { wasAccepted || rejectionReason == .ambiguousZone }
 }
 
 public enum ClassifierTrainingError: Error, LocalizedError, Equatable {

@@ -101,7 +101,12 @@ public final class StreamingTapDetector {
         // cannot arm its own capture. The emitted event still contains the
         // untouched full-band channels used by the feature extractor.
         let rmsThreshold = max(noiseFloorRMS * 1.18, 0.0008)
-        let peakThreshold = max(noiseFloorRMS * 4.0, 0.007)
+        // The fixed minimum only matters in a quiet room; in a loud one the
+        // floor sets the threshold. Light double and triple taps peak near
+        // 0.005 to 0.007, and at 0.007 a quarter of double taps lost a tap
+        // (measured: 75% of doubles fully heard at 0.007, 95% at 0.005, with
+        // no extra false gestures).
+        let peakThreshold = max(noiseFloorRMS * 4.0, 0.005)
         let crest = peak / max(rms, 0.000_001)
         let strongSampleThreshold = max(peakThreshold, peak * 0.55)
         let strongSampleFraction = Double(onsetSignal.filter {

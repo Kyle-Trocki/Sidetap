@@ -29,8 +29,42 @@ public enum ZoneActionKind: String, CaseIterable, Codable, Sendable, Identifiabl
         case .openApplication: return "Open or focus app"
         case .openItem: return "Open file or folder"
         case .runShellCommand: return "Run shell command"
-        case .screenshotClipboard: return "Screenshot to clipboard"
-        case .screenshotSelection: return "Capture selection"
+        // The case names are saved in profiles and predate the destination option.
+        case .screenshotClipboard: return "Screenshot"
+        case .screenshotSelection: return "Screenshot selected area"
+        }
+    }
+}
+
+/// The gestures that run actions: a double or a triple tap anywhere on the desk.
+public enum TapGesture: Int, CaseIterable, Codable, Sendable, Identifiable {
+    case double = 2
+    case triple = 3
+
+    public var id: Int { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .double: return "Double tap"
+        case .triple: return "Triple tap"
+        }
+    }
+}
+
+/// Where a screenshot action puts its image. A screenshot action stores the raw
+/// value in its `text`; anything unrecognized, including empty, means the Desktop.
+public enum ScreenshotDestination: String, CaseIterable, Sendable, Identifiable {
+    case desktop
+    case clipboard
+    case both
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .desktop: return "Save to Desktop"
+        case .clipboard: return "Copy to clipboard"
+        case .both: return "Desktop and clipboard"
         }
     }
 }
@@ -111,6 +145,10 @@ public struct SidetapProfile: Codable, Equatable, Sendable, Identifiable {
     /// Where this desk is. Sidetap switches to the nearest pinned profile when
     /// the Mac arrives there. Profiles saved before this field decode as nil.
     public var location: ProfileLocation?
+    /// What a double tap and a triple tap run. Profiles saved before gestures
+    /// decode as nil, which means no action.
+    public var doubleTapAction: ZoneActionConfiguration?
+    public var tripleTapAction: ZoneActionConfiguration?
 
     public init(
         id: UUID = UUID(),
@@ -137,6 +175,17 @@ public struct SidetapProfile: Codable, Equatable, Sendable, Identifiable {
 
     public func action(for zone: DeskZone) -> ZoneActionConfiguration {
         zones.first(where: { $0.zone == zone })?.action ?? ZoneActionConfiguration(kind: .none)
+    }
+
+    public func action(for gesture: TapGesture) -> ZoneActionConfiguration {
+        (gesture == .double ? doubleTapAction : tripleTapAction) ?? ZoneActionConfiguration(kind: .none)
+    }
+
+    public mutating func setAction(_ action: ZoneActionConfiguration, for gesture: TapGesture) {
+        switch gesture {
+        case .double: doubleTapAction = action
+        case .triple: tripleTapAction = action
+        }
     }
 }
 

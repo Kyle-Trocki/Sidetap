@@ -78,7 +78,15 @@ final class PersistenceTests: XCTestCase {
         let unpinned = profile("Travel", nil)
         try [home, work, unpinned].forEach(store.save)
 
+        var withGesture = home
+        withGesture.setAction(ZoneActionConfiguration(kind: .pasteText), for: .double)
+        try store.save(withGesture)
+
         let loaded = try store.loadAll()
+        // A saved gesture action comes back; a profile saved without one has no action.
+        XCTAssertEqual(loaded.first { $0.id == home.id }?.action(for: .double).kind, .pasteText)
+        XCTAssertEqual(loaded.first { $0.id == home.id }?.action(for: .triple).kind, ZoneActionKind.none)
+        XCTAssertEqual(loaded.first { $0.id == work.id }?.action(for: .double).kind, ZoneActionKind.none)
         XCTAssertEqual(loaded.first { $0.id == home.id }?.location, home.location)
         XCTAssertNil(loaded.first { $0.id == unpinned.id }?.location)
 

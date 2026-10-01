@@ -123,13 +123,33 @@ final class LocalActionDispatcher {
                 arguments: ["-lc", command],
                 name: "Shell command"
             )
-        case .takeScreenshot(let interactive):
+        case .takeScreenshot(let interactive, let destination):
+            let path = destination == .clipboard ? nil : Self.desktopScreenshotPath()
+            // screencapture writes to a file or the clipboard, not both, so for both,
+            // copy the saved image. A cancelled selection leaves no file and copies nothing.
+            let copySavedImage: @MainActor () -> Void = {
+                guard let path, let image = NSImage(contentsOfFile: path) else { return }
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.writeObjects([image])
+            }
             try launchProcess(
                 executable: "/usr/sbin/screencapture",
-                arguments: interactive ? ["-i", "-c"] : ["-x", "-c"],
-                name: interactive ? "Selection capture" : "Screenshot"
+                arguments: [interactive ? "-i" : "-x", path ?? "-c"],
+                name: interactive ? "Selection capture" : "Screenshot",
+                onSuccess: destination == .both ? copySavedImage : nil
             )
         }
+    }
+
+    /// A file on the real Desktop, named like the system's own screenshots.
+    /// `NSHomeDirectory()` is the sandbox container, so this asks the user
+    /// database for the home folder. Writing there relies on the Desktop
+    /// exception in the entitlements.
+    private static func desktopScreenshotPath() -> String {
+        let home = String(cString: getpwuid(getuid()).pointee.pw_dir)
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+        return "\(home)/Desktop/Screenshot \(formatter.string(from: Date())).png"
     }
 
     private func resolveBookmark(
@@ -155,7 +175,8 @@ final class LocalActionDispatcher {
     private func launchProcess(
         executable: String,
         arguments: [String],
-        name: String
+        name: String,
+        onSuccess: (@MainActor () -> Void)? = nil
     ) throws {
         let identifier = UUID()
         let process = Process()
@@ -169,6 +190,8 @@ final class LocalActionDispatcher {
                 self?.runningProcesses.removeValue(forKey: identifier)
                 if status != 0 {
                     self?.onAsyncError?(LocalActionDispatchError.automationFailed(name, status))
+                } else {
+                    onSuccess?()
                 }
             }
         }

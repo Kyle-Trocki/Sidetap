@@ -11,7 +11,7 @@ public enum LocalActionCommand: Equatable, Sendable {
     case openApplication(bookmarkData: Data)
     case openItem(bookmarkData: Data)
     case runShellCommand(String)
-    case takeScreenshot(interactive: Bool)
+    case takeScreenshot(interactive: Bool, destination: ScreenshotDestination)
 }
 
 public enum LocalActionPlanner {
@@ -66,11 +66,11 @@ public enum LocalActionPlanner {
             guard !command.isEmpty, !command.contains("\0") else { return nil }
             return .runShellCommand(command)
 
-        case .screenshotClipboard:
-            return .takeScreenshot(interactive: false)
-
-        case .screenshotSelection:
-            return .takeScreenshot(interactive: true)
+        case .screenshotClipboard, .screenshotSelection:
+            return .takeScreenshot(
+                interactive: action.kind == .screenshotSelection,
+                destination: ScreenshotDestination(rawValue: action.text) ?? .desktop
+            )
         }
     }
 

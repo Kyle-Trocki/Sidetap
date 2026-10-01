@@ -12,5 +12,9 @@
 	<true/>
 	<key>com.apple.security.personal-information.location</key>
 	<true/>
+	<key>com.apple.security.temporary-exception.files.home-relative-path.read-write</key>
+	<array>
+		<string>/Desktop/</string>
+	</array>
 </dict>
 </plist>

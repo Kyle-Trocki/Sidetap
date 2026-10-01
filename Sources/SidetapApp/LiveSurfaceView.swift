@@ -19,15 +19,9 @@ struct LiveSurfaceView: View {
         VStack(spacing: 20) {
             Spacer(minLength: 20)
 
-            DeskMapView(
-                activeZone: model.activeZone,
-                targetZone: nil,
-                confidence: model.lastDecision?.confidence ?? 0,
-                signalStrength: model.lastDecision?.signalStrength ?? model.audio.liveLevel,
-                isListening: model.audio.isListening
-            )
-            .frame(maxWidth: 760, maxHeight: 490)
-            .padding(.horizontal, 36)
+            gesturePanel
+                .frame(maxWidth: 760, maxHeight: 490)
+                .padding(.horizontal, 36)
 
             resultStrip
 
@@ -36,6 +30,38 @@ struct LiveSurfaceView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.horizontal, 28)
         .background(SidetapTheme.background)
+    }
+
+    private var gesturePanel: some View {
+        VStack(spacing: 22) {
+            Image(systemName: model.audio.isListening ? "hand.tap.fill" : "hand.tap")
+                .font(.system(size: 56, weight: .light))
+                .foregroundStyle(model.pendingTapCount > 0 ? Color.accentColor : Color.secondary)
+            Text(gestureTitle)
+                .font(.largeTitle.weight(.semibold))
+            VStack(spacing: 10) {
+                ForEach(TapGesture.allCases) { gesture in
+                    HStack {
+                        Text(gesture.displayName)
+                            .fontWeight(model.lastGesture == gesture ? .semibold : .regular)
+                        Spacer()
+                        Text(model.selectedProfile?.action(for: gesture).kind.displayName ?? "")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .frame(maxWidth: 340)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var gestureTitle: String {
+        switch model.pendingTapCount {
+        case 1: return "1 tap…"
+        case 2: return "2 taps…"
+        default: return model.lastGesture?.displayName ?? "Tap twice or three times"
+        }
     }
 
     private var setupPrompt: some View {
@@ -67,7 +93,7 @@ struct LiveSurfaceView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(lastResultTitle)
                     .font(.headline)
-                Text(model.lastDecision?.rejectionReason?.displayName ?? model.selectedProfile?.name ?? "")
+                Text(lastResultDetail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -101,9 +127,16 @@ struct LiveSurfaceView: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
+    private var lastResultDetail: String {
+        if let decision = model.lastDecision, !decision.isTap, let reason = decision.rejectionReason {
+            return reason.displayName
+        }
+        return model.selectedProfile?.name ?? ""
+    }
+
     private var lastResultTitle: String {
-        guard let decision = model.lastDecision else { return "Waiting for a double tap" }
-        return decision.zone?.displayName ?? "Double tap rejected"
+        guard let decision = model.lastDecision else { return "Waiting for taps" }
+        return decision.isTap ? "Tap heard" : "Sound rejected"
     }
 
     private func compactGauge(_ label: String, value: Double) -> some View {

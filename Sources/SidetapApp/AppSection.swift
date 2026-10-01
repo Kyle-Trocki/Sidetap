@@ -7,8 +7,9 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
     case evaluate
     case diagnostics
 
-    static let primary: [AppSection] = [.live, .calibrate, .actions, .evaluate]
-    static let advanced: [AppSection] = [.diagnostics]
+    static let primary: [AppSection] = [.live, .calibrate, .actions]
+    // The accuracy test scores zones, which gestures no longer use to pick an action.
+    static let advanced: [AppSection] = [.evaluate, .diagnostics]
 
     var id: String { rawValue }
 
@@ -17,7 +18,7 @@ enum AppSection: String, CaseIterable, Identifiable, Hashable {
         case .live: return "Desk"
         case .calibrate: return "Calibration"
         case .diagnostics: return "Diagnostics"
-        case .evaluate: return "Accuracy Test"
+        case .evaluate: return "Zone Accuracy Test"
         case .actions: return "Actions"
         }
     }

@@ -14,48 +14,33 @@ struct ZoneActionsView: View {
                     VStack(alignment: .leading, spacing: 5) {
                         Text("Assign actions")
                             .font(.title.weight(.semibold))
-                        Text("Each accepted tap runs its assigned action. Changes save automatically.")
+                        Text("Double-tap or triple-tap anywhere on the desk to run an action. Changes save automatically.")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }
 
                     Form {
-                        Section("Left of MacBook") {
-                            ForEach(sortedConfigurations(profile, isLeft: true)) { configuration in
+                        Section("Gestures") {
+                            ForEach(TapGesture.allCases) { gesture in
                                 ZoneActionRow(
-                                    configuration: configuration,
+                                    title: gesture.displayName,
+                                    action: profile.action(for: gesture),
                                     onChange: { action in
-                                        model.updateAction(for: configuration.zone, action: action)
+                                        model.updateAction(for: gesture, action: action)
                                     },
                                     onTest: model.testAction,
                                     onError: { error in
                                         model.errorMessage = "The action could not be assigned. \(error.localizedDescription)"
                                     }
                                 )
-                                .id("\(profile.id)-\(configuration.zone.rawValue)")
-                            }
-                        }
-
-                        Section("Right of MacBook") {
-                            ForEach(sortedConfigurations(profile, isLeft: false)) { configuration in
-                                ZoneActionRow(
-                                    configuration: configuration,
-                                    onChange: { action in
-                                        model.updateAction(for: configuration.zone, action: action)
-                                    },
-                                    onTest: model.testAction,
-                                    onError: { error in
-                                        model.errorMessage = "The action could not be assigned. \(error.localizedDescription)"
-                                    }
-                                )
-                                .id("\(profile.id)-\(configuration.zone.rawValue)")
+                                .id("\(profile.id)-\(gesture.rawValue)")
                             }
                         }
 
                         Section("Automation") {
                             Label("Use Run Shortcut for multi-step workflows such as opening Claude and starting a voice workflow.", systemImage: "command")
                             Label("Shell commands run through /bin/zsh with Sidetap's current macOS permissions.", systemImage: "terminal")
-                            Label("Screenshot actions copy the result and may request Screen Recording access.", systemImage: "camera.viewfinder")
+                            Label("Screenshot actions save to the Desktop, copy to the clipboard, or both, and may request Screen Recording access.", systemImage: "camera.viewfinder")
                         }
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -94,19 +79,13 @@ struct ZoneActionsView: View {
             Button("Delete Profile", role: .destructive) { model.deleteSelectedProfile() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("The saved calibration and its four actions will be removed.")
+            Text("The saved calibration and its actions will be removed.")
         }
-    }
-
-    private func sortedConfigurations(_ profile: SidetapProfile, isLeft: Bool) -> [ZoneConfiguration] {
-        profile.zones
-            .filter { $0.zone.isLeft == isLeft }
-            .sorted { $0.zone.verticalIndex < $1.zone.verticalIndex }
     }
 }
 
 private struct ZoneActionRow: View {
-    let configuration: ZoneConfiguration
+    let title: String
     let onChange: (ZoneActionConfiguration) -> Bool
     let onTest: (ZoneActionConfiguration) -> Void
     let onError: (Error) -> Void
@@ -116,16 +95,17 @@ private struct ZoneActionRow: View {
     private let sounds = ["Tink", "Pop", "Ping", "Glass", "Funk", "Morse", "Purr", "Sosumi"]
 
     init(
-        configuration: ZoneConfiguration,
+        title: String,
+        action: ZoneActionConfiguration,
         onChange: @escaping (ZoneActionConfiguration) -> Bool,
         onTest: @escaping (ZoneActionConfiguration) -> Void,
         onError: @escaping (Error) -> Void
     ) {
-        self.configuration = configuration
+        self.title = title
         self.onChange = onChange
         self.onTest = onTest
         self.onError = onError
-        _action = State(initialValue: configuration.action)
+        _action = State(initialValue: action)
     }
 
     var body: some View {
@@ -138,7 +118,7 @@ private struct ZoneActionRow: View {
                 }
                 .labelsHidden()
                 .frame(width: 190)
-                .accessibilityLabel("Action for \(zoneDescription)")
+                .accessibilityLabel("Action for \(title)")
 
                 detailControl
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -150,17 +130,12 @@ private struct ZoneActionRow: View {
                 .buttonStyle(.borderless)
                 .disabled(!canTest)
                 .help(canTest ? "Test this action" : "Finish configuring this action before testing")
-                .accessibilityLabel("Test action for \(zoneDescription)")
+                .accessibilityLabel("Test action for \(title)")
             }
         } label: {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(configuration.zone.positionName)
-                    .font(.body.weight(.medium))
-                Text(configuration.zone.isLeft ? "Left side" : "Right side")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .frame(width: 86, alignment: .leading)
+            Text(title)
+                .font(.body.weight(.medium))
+                .frame(width: 86, alignment: .leading)
         }
         .padding(.vertical, 4)
         .onChange(of: action) { oldValue, newValue in
@@ -177,10 +152,6 @@ private struct ZoneActionRow: View {
 
     private var canTest: Bool {
         LocalActionPlanner.command(for: action) != nil
-    }
-
-    private var zoneDescription: String {
-        "\(configuration.zone.positionName), \(configuration.zone.isLeft ? "left" : "right") side"
     }
 
     @ViewBuilder
@@ -230,12 +201,18 @@ private struct ZoneActionRow: View {
                     .font(.caption2)
                     .foregroundStyle(.orange)
             }
-        case .screenshotClipboard:
-            Label("All displays → Clipboard", systemImage: "rectangle.on.rectangle")
-                .foregroundStyle(.secondary)
-        case .screenshotSelection:
-            Label("Choose an area → Clipboard", systemImage: "viewfinder")
-                .foregroundStyle(.secondary)
+        case .screenshotClipboard, .screenshotSelection:
+            Picker("Save to", selection: Binding(
+                get: { ScreenshotDestination(rawValue: action.text) ?? .desktop },
+                set: { action.text = $0.rawValue }
+            )) {
+                ForEach(ScreenshotDestination.allCases) { destination in
+                    Text(destination.displayName).tag(destination)
+                }
+            }
+            .labelsHidden()
+            .frame(maxWidth: 180)
+            .accessibilityLabel("Where the screenshot goes")
         }
     }
 

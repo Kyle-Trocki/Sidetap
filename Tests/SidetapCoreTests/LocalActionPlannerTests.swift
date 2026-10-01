@@ -109,11 +109,22 @@ final class LocalActionPlannerTests: XCTestCase {
     func testScreenshotCommandsNeedNoAdditionalConfiguration() {
         XCTAssertEqual(
             LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .screenshotClipboard)),
-            .takeScreenshot(interactive: false)
+            .takeScreenshot(interactive: false, destination: .desktop)
         )
         XCTAssertEqual(
             LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .screenshotSelection)),
-            .takeScreenshot(interactive: true)
+            .takeScreenshot(interactive: true, destination: .desktop)
+        )
+        // The destination is the action's text; anything unrecognized saves to the Desktop.
+        for destination in ScreenshotDestination.allCases {
+            XCTAssertEqual(
+                LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .screenshotSelection, text: destination.rawValue)),
+                .takeScreenshot(interactive: true, destination: destination)
+            )
+        }
+        XCTAssertEqual(
+            LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .screenshotClipboard, text: "leftover text")),
+            .takeScreenshot(interactive: false, destination: .desktop)
         )
     }
 

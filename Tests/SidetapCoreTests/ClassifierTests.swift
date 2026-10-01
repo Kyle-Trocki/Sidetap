@@ -154,6 +154,25 @@ final class ClassifierTests: XCTestCase {
         XCTAssertNotNil(recognizer.add(oneDimensionFeature(1), at: 21.3))
     }
 
+    func testTapGestureCounterGroupsTapsByGap() {
+        var counter = TapGestureCounter()
+
+        // Three taps 0.25 s apart are one gesture of three.
+        XCTAssertEqual(counter.add(at: 10.00), 1)
+        XCTAssertEqual(counter.add(at: 10.25), 2)
+        XCTAssertEqual(counter.add(at: 10.50), 3)
+        XCTAssertEqual(counter.finish(), 3)
+
+        // A pause longer than the gap starts a new gesture, and finishing resets the count.
+        XCTAssertEqual(counter.add(at: 20.0), 1)
+        XCTAssertEqual(counter.add(at: 20.3), 2)
+        XCTAssertEqual(counter.add(at: 21.0), 1)
+        XCTAssertEqual(counter.finish(), 1)
+        XCTAssertEqual(counter.add(at: 21.2), 1)
+        XCTAssertEqual(TapGesture(rawValue: 2), .double)
+        XCTAssertNil(TapGesture(rawValue: 1))
+    }
+
     func testLeaveOneOutEvaluationUsesEverySample() throws {
         let samples = trainingSamples()
         let result = try ClassifierEvaluator.leaveOneOut(samples, minimumConfidence: 0.2)

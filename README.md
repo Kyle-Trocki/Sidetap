@@ -9,9 +9,11 @@ Future demo GIF placeholder: ![Sidetap demo](docs/sidetap-demo.gif)
 Tip: Record with macOS screen recording, then use ffmpeg's palettegen and paletteuse filters for a crisp, compact GIF.
 -->
 
-Sidetap is an experimental native macOS utility that turns the desk immediately around a MacBook into four assignable tap zones. It listens through the Mac's microphone, classifies each tap locally, and runs the action assigned to that zone.
+Sidetap is an experimental native macOS utility that runs an action when you double-tap or triple-tap the desk around a MacBook. It listens through the Mac's microphone, checks locally that each sound is a tap on your desk, and counts the taps.
 
-The topology is intentionally four broad zones:
+Sidetap began as zone-based: four zones around the MacBook, each with its own action. Calibration, diagnostics, and the zone accuracy test still use those zones, but actions no longer do, because counting taps proved more reliable than telling zones apart.
+
+Calibration uses four broad zones so that Sidetap hears taps from all around the MacBook:
 
 ```text
                   Display side
@@ -36,7 +38,7 @@ The recovered physical baseline, failure analysis, and controlled iteration prot
 - Passive tap acoustics, an optional active acoustic probe, and a hybrid mode.
 - Robust feature normalization, a regularized linear zone model backed by nearest-example novelty checks, ambiguity rejection, out-of-distribution rejection, and optional negative examples.
 - Location-based desk switching: each profile can be pinned to where its desk is, and Sidetap selects it automatically within 300 m.
-- Per-profile actions: visual only, play a sound, copy or speak text, open a website, run a Shortcut, open an application or item, execute a shell command, or capture a screenshot. New zones default to visual-only until the user assigns a side effect.
+- Per-profile actions: visual only, play a sound, copy or speak text, open a website, run a Shortcut, open an application or item, execute a shell command, or capture a screenshot. Both gestures default to visual-only until the user assigns a side effect.
 - Guided 60-tap held-out evaluation with per-zone accuracy, latency, rejected-tap counts, and a confusion matrix.
 - Saved evaluation history is restored after relaunch and scoped to the desk profile that produced it.
 - Signal diagnostics, labeled feature capture, approach comparison, JSON/CSV reports, and opt-in raw debug WAV capture.
@@ -106,9 +108,9 @@ Sidetap switches to a pinned profile only when the Mac is within 300 m of it. An
 
 ## Assigning actions
 
-Actions contains exactly four rows grouped by side. Changes save to the selected profile as they are made, and each configured action has an inline Test button.
+Actions contains two rows: one for a double tap and one for a triple tap. Changes save to the selected profile as they are made, and each configured action has an inline Test button.
 
-- Visual only highlights the accepted zone without a side effect.
+- Visual only shows the gesture without a side effect.
 - Play sound uses an available macOS system sound.
 - Copy text writes the configured text to the pasteboard.
 - Paste text sends ⌘V to the frontmost app. With no text configured, it pastes whatever is on the pasteboard. With text configured, it puts that text on the pasteboard, pastes it, and then restores the previous contents. macOS asks for Accessibility access the first time.
@@ -118,17 +120,21 @@ Actions contains exactly four rows grouped by side. Changes save to the selected
 - Open or focus app stores an app-scoped security bookmark for the application selected by the user.
 - Open file or folder stores an app-scoped security bookmark for a user-selected item.
 - Run shell command executes the configured command through `/bin/zsh` with Sidetap's sandbox permissions.
-- Screenshot to clipboard captures the full display without saving a file.
-- Select screenshot to clipboard invokes the standard interactive area-selection tool.
+- Screenshot captures the full display.
+- Screenshot selected area opens the same area selector as Command-Shift-4.
 
-Actions run on a double tap: two taps 0.08 to 0.6 seconds apart. Sidetap averages both taps into one zone decision, so tap the same zone twice. A single tap does nothing. Calibration still uses single taps.
+Both screenshot actions save a PNG file to the Desktop by default. Each one can copy to the clipboard instead, or do both. Saving to the Desktop uses a sandbox exception for that folder.
 
-Sidetap ignores a tap in these cases, even when it would otherwise match a zone:
+Gestures work anywhere on the desk. Taps no more than 0.45 seconds apart belong to one gesture. A triple tap runs its action at the third tap. A double tap runs its action about 0.7 seconds after the second tap, once it's clear that no third tap is coming. A single tap does nothing.
+
+Each tap must still sound like a tap on the calibrated desk, so calibrate before you assign actions. Which zone a tap came from doesn't matter.
+
+Sidetap ignores a tap in these cases, even when it sounds like one:
 
 - A key press or trackpad click happened within 300 ms of it. Typing shakes the MacBook the same way a tap does.
 - The room is too noisy. When the background level is above about ten times that of a quiet room, Sidetap runs no actions and the status bar says so.
 
-Actions run only for an accepted classification while Desk is selected. Calibration, profile editing, diagnostics, accuracy reports, and the Actions editor suppress automatic side effects; the editor's inline Test button remains explicit. Rejected, ambiguous, weak, clipped, or out-of-distribution events do not trigger an action. Shell commands run automatically once assigned, so commands should be safe to repeat and should not depend on an interactive terminal. macOS may request access when an action first opens a protected item or captures the screen. A Shortcut is the recommended way to compose multi-step workflows such as opening Claude and beginning a user-defined voice flow.
+Actions run only while Desk is selected. Calibration, profile editing, diagnostics, accuracy reports, and the Actions editor suppress automatic side effects; the editor's inline Test button remains explicit. Weak, clipped, noisy, or out-of-distribution sounds don't count as taps. A tap whose zone is unclear still counts. Shell commands run automatically once assigned, so commands should be safe to repeat and should not depend on an interactive terminal. macOS may request access when an action first opens a protected item or captures the screen. A Shortcut is the recommended way to compose multi-step workflows such as opening Claude and beginning a user-defined voice flow.
 
 ## Supported surfaces
 
