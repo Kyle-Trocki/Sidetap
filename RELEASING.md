@@ -1,6 +1,6 @@
-# Releasing Holo
+# Releasing Sidetap
 
-Holo is distributed directly from GitHub Releases as a signed and notarized DMG. It is not built for the Mac App Store.
+Sidetap is distributed directly from GitHub Releases as a signed and notarized DMG. It is not built for the Mac App Store.
 
 ## One-time Apple setup
 
@@ -17,7 +17,7 @@ Holo is distributed directly from GitHub Releases as a signed and notarized DMG.
 For local notarization, either use the API key directly or save Apple ID credentials in the login keychain:
 
 ```sh
-xcrun notarytool store-credentials "holo-notary" \
+xcrun notarytool store-credentials "sidetap-notary" \
   --apple-id "APPLE_ID_EMAIL" \
   --team-id "APPLE_TEAM_ID" \
   --password "APP_SPECIFIC_PASSWORD"
@@ -55,7 +55,7 @@ Using a stored keychain profile:
 ```sh
 export DEVELOPER_ID_APPLICATION='Developer ID Application: ORGANIZATION (TEAM_ID)'
 export DEVELOPMENT_TEAM='TEAM_ID'
-export NOTARYTOOL_KEYCHAIN_PROFILE='holo-notary'
+export NOTARYTOOL_KEYCHAIN_PROFILE='sidetap-notary'
 scripts/release.sh
 ```
 
@@ -70,20 +70,20 @@ export APP_STORE_CONNECT_ISSUER_ID='ISSUER_ID'
 scripts/release.sh
 ```
 
-The default artifact is `dist/Holo.dmg`. Set `DMG_PATH` to another `.dmg` path inside the repository when a versioned filename is useful:
+The default artifact is `dist/Sidetap.dmg`. Set `DMG_PATH` to another `.dmg` path inside the repository when a versioned filename is useful:
 
 ```sh
-DMG_PATH="$PWD/dist/Holo-v0.1.0.dmg" scripts/release.sh
+DMG_PATH="$PWD/dist/Sidetap-v0.1.0.dmg" scripts/release.sh
 ```
 
-The script regenerates the project, makes an unsigned Release archive, signs embedded code and `Holo.app` with timestamped Developer ID signatures and hardened runtime, creates the DMG, waits for notarization, then staples and validates the DMG ticket. Signing and notarization require network access and real Apple credentials.
+The script regenerates the project, makes an unsigned Release archive, signs embedded code and `Sidetap.app` with timestamped Developer ID signatures and hardened runtime, creates the DMG, waits for notarization, then staples and validates the DMG ticket. Signing and notarization require network access and real Apple credentials.
 
 ## CI release runbook
 
 1. Update `MARKETING_VERSION` and, when appropriate, `CURRENT_PROJECT_VERSION` in `project.yml`.
 2. Run the normal tests and merge the version change to the release commit.
 3. Create an annotated tag beginning with `v`, such as `v0.1.0`, on that commit.
-4. Push the tag to GitHub. `.github/workflows/release.yml` runs on `v*`, builds on `macos-26`, notarizes `Holo-<tag>.dmg`, creates the matching GitHub Release, and uploads the DMG.
+4. Push the tag to GitHub. `.github/workflows/release.yml` runs on `v*`, builds on `macos-26`, notarizes `Sidetap-<tag>.dmg`, creates the matching GitHub Release, and uploads the DMG.
 5. Confirm the workflow succeeds, download the published DMG, and verify that it opens and launches on a separate Mac before announcing the release.
 
 If the workflow fails before compilation, check that all five secrets are present and that the `.p12` contains both the Developer ID certificate and its private key. If notarization fails, inspect the `notarytool` status output for signing, entitlement, or API-key authorization errors.

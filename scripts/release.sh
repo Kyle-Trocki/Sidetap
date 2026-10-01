@@ -5,10 +5,10 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/.." && pwd)"
 build_dir="$repo_root/build/release"
-archive_path="$build_dir/Holo.xcarchive"
-app_path="$archive_path/Products/Applications/Holo.app"
+archive_path="$build_dir/Sidetap.xcarchive"
+app_path="$archive_path/Products/Applications/Sidetap.app"
 dmg_root="$build_dir/dmg-root"
-dmg_path="${DMG_PATH:-$repo_root/dist/Holo.dmg}"
+dmg_path="${DMG_PATH:-$repo_root/dist/Sidetap.dmg}"
 
 fail() {
     echo "error: $*" >&2
@@ -70,13 +70,13 @@ rm -f "$dmg_path"
 
 cd "$repo_root"
 
-log "Generating Holo.xcodeproj"
+log "Generating Sidetap.xcodeproj"
 xcodegen generate
 
 log "Archiving the Release build"
 xcodebuild archive \
-    -project Holo.xcodeproj \
-    -scheme Holo \
+    -project Sidetap.xcodeproj \
+    -scheme Sidetap \
     -configuration Release \
     -destination "generic/platform=macOS" \
     -archivePath "$archive_path" \
@@ -85,7 +85,7 @@ xcodebuild archive \
     CODE_SIGNING_REQUIRED=NO \
     DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM"
 
-[[ -d "$app_path" ]] || fail "archive did not contain Holo.app at $app_path"
+[[ -d "$app_path" ]] || fail "archive did not contain Sidetap.app at $app_path"
 
 log "Signing embedded code with Developer ID Application"
 if [[ -d "$app_path/Contents" ]]; then
@@ -103,22 +103,22 @@ if [[ -d "$app_path/Contents" ]]; then
     )
 fi
 
-log "Signing Holo.app with sandbox entitlements and hardened runtime"
+log "Signing Sidetap.app with sandbox entitlements and hardened runtime"
 codesign \
     --force \
     --options runtime \
     --timestamp \
-    --entitlements "$repo_root/Config/Holo.entitlements" \
+    --entitlements "$repo_root/Config/Sidetap.entitlements" \
     --sign "$DEVELOPER_ID_APPLICATION" \
     "$app_path"
 codesign --verify --deep --strict --verbose=2 "$app_path"
 
 log "Creating the distributable DMG"
 mkdir -p "$dmg_root"
-ditto "$app_path" "$dmg_root/Holo.app"
+ditto "$app_path" "$dmg_root/Sidetap.app"
 ln -s /Applications "$dmg_root/Applications"
 hdiutil create \
-    -volname Holo \
+    -volname Sidetap \
     -srcfolder "$dmg_root" \
     -format UDZO \
     -ov \

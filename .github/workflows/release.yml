@@ -45,10 +45,10 @@ jobs:
             fi
           done
 
-          certificate_path="$RUNNER_TEMP/holo-developer-id.p12"
-          keychain_path="$RUNNER_TEMP/holo-signing.keychain-db"
+          certificate_path="$RUNNER_TEMP/sidetap-developer-id.p12"
+          keychain_path="$RUNNER_TEMP/sidetap-signing.keychain-db"
           keychain_password="$(openssl rand -hex 32)"
-          api_key_directory="$RUNNER_TEMP/holo-notary-key"
+          api_key_directory="$RUNNER_TEMP/sidetap-notary-key"
           api_key_path="$api_key_directory/AuthKey.p8"
 
           mkdir -p "$api_key_directory"
@@ -98,7 +98,7 @@ jobs:
         run: |
           set -euo pipefail
           safe_tag="${GITHUB_REF_NAME//\//-}"
-          dmg_path="$GITHUB_WORKSPACE/dist/Holo-$safe_tag.dmg"
+          dmg_path="$GITHUB_WORKSPACE/dist/Sidetap-$safe_tag.dmg"
           DMG_PATH="$dmg_path" scripts/release.sh
           printf 'DMG_PATH=%s\n' "$dmg_path" >> "$GITHUB_ENV"
 
@@ -111,12 +111,12 @@ jobs:
           gh release create "$GITHUB_REF_NAME" "$DMG_PATH" \
             --verify-tag \
             --generate-notes \
-            --title "Holo $GITHUB_REF_NAME"
+            --title "Sidetap $GITHUB_REF_NAME"
 
       - name: Remove temporary credentials
         if: always()
         shell: bash
         run: |
-          rm -f "$RUNNER_TEMP/holo-developer-id.p12"
-          rm -rf "$RUNNER_TEMP/holo-notary-key"
-          security delete-keychain "$RUNNER_TEMP/holo-signing.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/sidetap-developer-id.p12"
+          rm -rf "$RUNNER_TEMP/sidetap-notary-key"
+          security delete-keychain "$RUNNER_TEMP/sidetap-signing.keychain-db" 2>/dev/null || true

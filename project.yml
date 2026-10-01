@@ -1,6 +1,6 @@
-name: Holo
+name: Sidetap
 options:
-  bundleIdPrefix: com.holo
+  bundleIdPrefix: com.sidetap
   deploymentTarget:
     macOS: "14.0"
   createIntermediateGroups: true
@@ -13,25 +13,25 @@ settings:
     CLANG_ENABLE_MODULES: YES
     ENABLE_USER_SCRIPT_SANDBOXING: YES
 targets:
-  HoloCore:
+  SidetapCore:
     type: framework
     platform: macOS
     sources:
-      - path: Sources/HoloCore
+      - path: Sources/SidetapCore
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.holo.HoloCore
+        PRODUCT_BUNDLE_IDENTIFIER: com.sidetap.SidetapCore
         GENERATE_INFOPLIST_FILE: YES
         SKIP_INSTALL: YES
-  Holo:
+  Sidetap:
     type: application
     platform: macOS
     sources:
-      - path: Sources/HoloApp
+      - path: Sources/SidetapApp
       - path: Config/AppIcon.icns
         buildPhase: resources
     info:
-      path: Config/Holo-Info.plist
+      path: Config/Sidetap-Info.plist
       properties:
         CFBundleDisplayName: Sidetap
         CFBundleIconFile: AppIcon
@@ -46,7 +46,7 @@ targets:
         NSHighResolutionCapable: true
         NSSupportsAutomaticGraphicsSwitching: true
     entitlements:
-      path: Config/Holo.entitlements
+      path: Config/Sidetap.entitlements
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.device.audio-input: true
@@ -54,7 +54,7 @@ targets:
         com.apple.security.files.user-selected.read-write: true
         com.apple.security.files.bookmarks.app-scope: true
     dependencies:
-      - target: HoloCore
+      - target: SidetapCore
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.sidetap.app
@@ -64,122 +64,122 @@ targets:
         DEVELOPMENT_TEAM: J7ZMYXJVRR
         ENABLE_APP_SANDBOX: YES
         ENABLE_HARDENED_RUNTIME: YES
-  HoloCoreTests:
+  SidetapCoreTests:
     type: bundle.unit-test
     platform: macOS
     sources:
-      - path: Tests/HoloCoreTests
+      - path: Tests/SidetapCoreTests
     dependencies:
-      - target: HoloCore
+      - target: SidetapCore
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.holo.HoloCoreTests
+        PRODUCT_BUNDLE_IDENTIFIER: com.sidetap.SidetapCoreTests
         GENERATE_INFOPLIST_FILE: YES
-  HoloAppTests:
+  SidetapAppTests:
     type: bundle.unit-test
     platform: macOS
     sources:
-      - path: Tests/HoloAppTests
-      - path: Sources/HoloApp/AppSection.swift
-      - path: Sources/HoloApp/GuidedNavigationGate.swift
-      - path: Sources/HoloApp/SensingStrategyResolver.swift
+      - path: Tests/SidetapAppTests
+      - path: Sources/SidetapApp/AppSection.swift
+      - path: Sources/SidetapApp/GuidedNavigationGate.swift
+      - path: Sources/SidetapApp/SensingStrategyResolver.swift
     dependencies:
-      - target: HoloCore
+      - target: SidetapCore
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.holo.HoloAppTests
+        PRODUCT_BUNDLE_IDENTIFIER: com.sidetap.SidetapAppTests
         GENERATE_INFOPLIST_FILE: YES
-  HoloSoak:
+  SidetapSoak:
     type: tool
     platform: macOS
     sources:
-      - path: Sources/HoloSoak
+      - path: Sources/SidetapSoak
     dependencies:
-      - target: HoloCore
+      - target: SidetapCore
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.holo.HoloSoak
+        PRODUCT_BUNDLE_IDENTIFIER: com.sidetap.SidetapSoak
         GENERATE_INFOPLIST_FILE: YES
-  HoloReplaySupport:
+  SidetapReplaySupport:
     type: framework
     platform: macOS
     sources:
-      - path: Sources/HoloReplaySupport
+      - path: Sources/SidetapReplaySupport
     dependencies:
-      - target: HoloCore
+      - target: SidetapCore
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.holo.HoloReplaySupport
+        PRODUCT_BUNDLE_IDENTIFIER: com.sidetap.SidetapReplaySupport
         GENERATE_INFOPLIST_FILE: YES
         SKIP_INSTALL: YES
-  HoloReplay:
+  SidetapReplay:
     type: tool
     platform: macOS
     sources:
-      - path: Sources/HoloReplay
+      - path: Sources/SidetapReplay
     dependencies:
-      - target: HoloCore
-      - target: HoloReplaySupport
+      - target: SidetapCore
+      - target: SidetapReplaySupport
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.holo.HoloReplay
+        PRODUCT_BUNDLE_IDENTIFIER: com.sidetap.SidetapReplay
         GENERATE_INFOPLIST_FILE: YES
-  HoloReplayTests:
+  SidetapReplayTests:
     type: bundle.unit-test
     platform: macOS
     sources:
-      - path: Tests/HoloReplayTests
+      - path: Tests/SidetapReplayTests
     dependencies:
-      - target: HoloReplaySupport
-      - target: HoloCore
+      - target: SidetapReplaySupport
+      - target: SidetapCore
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.holo.HoloReplayTests
+        PRODUCT_BUNDLE_IDENTIFIER: com.sidetap.SidetapReplayTests
         GENERATE_INFOPLIST_FILE: YES
-  HoloRouteCheck:
+  SidetapRouteCheck:
     type: tool
     platform: macOS
     sources:
-      - path: Sources/HoloRouteCheck
-      - path: Sources/HoloApp/SystemAudioRoute.swift
+      - path: Sources/SidetapRouteCheck
+      - path: Sources/SidetapApp/SystemAudioRoute.swift
     dependencies:
-      - target: HoloCore
+      - target: SidetapCore
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.holo.HoloRouteCheck
+        PRODUCT_BUNDLE_IDENTIFIER: com.sidetap.SidetapRouteCheck
         GENERATE_INFOPLIST_FILE: YES
 schemes:
-  Holo:
+  Sidetap:
     build:
       targets:
-        Holo: all
-        HoloCore: all
+        Sidetap: all
+        SidetapCore: all
     run:
       config: Debug
     test:
       config: Debug
       targets:
-        - HoloCoreTests
-        - HoloAppTests
-  HoloSoak:
+        - SidetapCoreTests
+        - SidetapAppTests
+  SidetapSoak:
     build:
       targets:
-        HoloSoak: all
+        SidetapSoak: all
     run:
       config: Release
-  HoloReplay:
+  SidetapReplay:
     build:
       targets:
-        HoloReplay: all
+        SidetapReplay: all
     run:
       config: Release
     test:
       config: Debug
       targets:
-        - HoloReplayTests
-  HoloRouteCheck:
+        - SidetapReplayTests
+  SidetapRouteCheck:
     build:
       targets:
-        HoloRouteCheck: all
+        SidetapRouteCheck: all
     run:
       config: Debug

@@ -5,7 +5,7 @@
 Sidetap is a fork of [Holo](https://github.com/JustinGamer191/Holo) by JustinGamer191.
 
 <!--
-Future demo GIF placeholder: ![Sidetap demo](docs/holo-demo.gif)
+Future demo GIF placeholder: ![Sidetap demo](docs/sidetap-demo.gif)
 Tip: Record with macOS screen recording, then use ffmpeg's palettegen and paletteuse filters for a crisp, compact GIF.
 -->
 
@@ -47,7 +47,7 @@ The recovered physical baseline, failure analysis, and controlled iteration prot
 
 - macOS 14 or later.
 - Xcode 26 is recommended for the current project. The app uses Liquid Glass button styles on macOS 26 and native bordered controls on older supported systems.
-- [XcodeGen](https://github.com/yonaskolb/XcodeGen) to regenerate `Holo.xcodeproj` from `project.yml`.
+- [XcodeGen](https://github.com/yonaskolb/XcodeGen) to regenerate `Sidetap.xcodeproj` from `project.yml`.
 - A MacBook with a built-in microphone. Sidetap uses it even when AirPods or another input is the system default, so the calibrated signal path never changes.
 - Active and Hybrid sensing also use the built-in speakers, even when another output is the system default. Passive sensing doesn't emit a probe.
 
@@ -59,7 +59,7 @@ Generate the Xcode project after changing `project.yml`:
 xcodegen generate
 ```
 
-Then open `Holo.xcodeproj`, select the `Holo` scheme, and run it on My Mac. A new install requests microphone permission when calibration begins or when the user explicitly presses Resume; it does not prompt merely because the window opened.
+Then open `Sidetap.xcodeproj`, select the `Sidetap` scheme, and run it on My Mac. A new install requests microphone permission when calibration begins or when the user explicitly presses Resume; it does not prompt merely because the window opened.
 
 Use Xcode's normal **Sign to Run Locally** build when launching Sidetap. `CODE_SIGNING_ALLOWED=NO` is only for non-GUI verification; its stripped bundle lacks the audio-input entitlement and should not be launched. An ad-hoc local build may still need consent again after its binary changes; selecting an Apple Development team gives macOS a stable signing identity across rebuilds. Within one build, Sidetap coalesces concurrent microphone starts and authorization requests, and its bundle prohibits duplicate app instances.
 
@@ -67,10 +67,10 @@ A non-signing command-line build is useful for CI or local verification:
 
 ```sh
 xcodebuild \
-  -project Holo.xcodeproj \
-  -scheme Holo \
+  -project Sidetap.xcodeproj \
+  -scheme Sidetap \
   -configuration Debug \
-  -derivedDataPath /tmp/HoloDerived \
+  -derivedDataPath /tmp/SidetapDerived \
   CODE_SIGNING_ALLOWED=NO \
   build
 ```
@@ -175,11 +175,11 @@ AVAudioEngine input
   → local action dispatcher
 ```
 
-- `Sources/HoloCore` contains the guided capture protocols, detector, FFT and feature extraction, classifier, persistence models, diagnostics, evaluation reporting, and WAV writer. It has no SwiftUI dependency.
-- `Sources/HoloApp` contains audio capture, app state, local action dispatch, and the native SwiftUI interface.
-- `Sources/HoloSoak` is a non-GUI synthetic DSP stress runner.
-- `Sources/HoloRouteCheck` is a non-GUI check of the current Core Audio input/output transport policy.
-- `Tests/HoloCoreTests` covers guided session totals and ordering, guided-capture quality gates, adaptive room-noise rejection, microphone-request coalescing, the chunked detector-to-classifier pipeline, injected active-probe recovery, shared-spectrum analysis, hardware-route policy, validated local-action planning, negative and ambiguity rejection, evaluation history, strict profile persistence, WAV output, and the exact four-zone topology.
+- `Sources/SidetapCore` contains the guided capture protocols, detector, FFT and feature extraction, classifier, persistence models, diagnostics, evaluation reporting, and WAV writer. It has no SwiftUI dependency.
+- `Sources/SidetapApp` contains audio capture, app state, local action dispatch, and the native SwiftUI interface.
+- `Sources/SidetapSoak` is a non-GUI synthetic DSP stress runner.
+- `Sources/SidetapRouteCheck` is a non-GUI check of the current Core Audio input/output transport policy.
+- `Tests/SidetapCoreTests` covers guided session totals and ordering, guided-capture quality gates, adaptive room-noise rejection, microphone-request coalescing, the chunked detector-to-classifier pipeline, injected active-probe recovery, shared-spectrum analysis, hardware-route policy, validated local-action planning, negative and ambiguity rejection, evaluation history, strict profile persistence, WAV output, and the exact four-zone topology.
 
 Each detected window uses one shared power spectrum for classification, active-response bands, and diagnostics rather than repeating the same FFT. Capture generations discard observations queued by an audio route or strategy that has already been stopped.
 
@@ -203,10 +203,10 @@ When Retain 90 ms debug recordings is enabled in Diagnostics, each detected wind
 Application Support contains:
 
 ```text
-Holo/Profiles/                 feature-only profile JSON
-Holo/Evaluations/              JSON and CSV evaluation reports
-Holo/approach-comparison.json  latest sensing comparison
-Holo/DebugCaptures/            opt-in raw WAV windows only
+Sidetap/Profiles/                 feature-only profile JSON
+Sidetap/Evaluations/              JSON and CSV evaluation reports
+Sidetap/approach-comparison.json  latest sensing comparison
+Sidetap/DebugCaptures/            opt-in raw WAV windows only
 ```
 
 Because the app is sandboxed, these paths live inside Sidetap's app container in normal signed builds.
@@ -226,10 +226,10 @@ Run the unit suite with:
 
 ```sh
 xcodebuild \
-  -project Holo.xcodeproj \
-  -scheme Holo \
+  -project Sidetap.xcodeproj \
+  -scheme Sidetap \
   -configuration Debug \
-  -derivedDataPath /tmp/HoloDerived \
+  -derivedDataPath /tmp/SidetapDerived \
   CODE_SIGNING_ALLOWED=NO \
   test
 ```
@@ -238,15 +238,15 @@ Build and run the synthetic soak without opening the GUI:
 
 ```sh
 xcodebuild \
-  -project Holo.xcodeproj \
-  -scheme HoloSoak \
+  -project Sidetap.xcodeproj \
+  -scheme SidetapSoak \
   -configuration Release \
-  -derivedDataPath /tmp/HoloSoakDerived \
+  -derivedDataPath /tmp/SidetapSoakDerived \
   CODE_SIGNING_ALLOWED=NO \
   build
 
-DYLD_FRAMEWORK_PATH=/tmp/HoloSoakDerived/Build/Products/Release \
-  /tmp/HoloSoakDerived/Build/Products/Release/HoloSoak --duration 1800
+DYLD_FRAMEWORK_PATH=/tmp/SidetapSoakDerived/Build/Products/Release \
+  /tmp/SidetapSoakDerived/Build/Products/Release/SidetapSoak --duration 1800
 ```
 
 The synthetic runner exercises feature extraction, classification, rejection gates, finite-value checks, and resident-memory behavior. It does not exercise AVAudioEngine, microphone permissions, real room noise, physical desk variability, or action dispatch.
@@ -255,15 +255,15 @@ Check the current built-in hardware routes without opening Sidetap or requesting
 
 ```sh
 xcodebuild \
-  -project Holo.xcodeproj \
-  -scheme HoloRouteCheck \
+  -project Sidetap.xcodeproj \
+  -scheme SidetapRouteCheck \
   -configuration Debug \
-  -derivedDataPath /tmp/HoloRouteDerived \
+  -derivedDataPath /tmp/SidetapRouteDerived \
   CODE_SIGNING_ALLOWED=NO \
   build
 
-DYLD_FRAMEWORK_PATH=/tmp/HoloRouteDerived/Build/Products/Debug \
-  /tmp/HoloRouteDerived/Build/Products/Debug/HoloRouteCheck
+DYLD_FRAMEWORK_PATH=/tmp/SidetapRouteDerived/Build/Products/Debug \
+  /tmp/SidetapRouteDerived/Build/Products/Debug/SidetapRouteCheck
 ```
 
 ## Known limitations

@@ -23,19 +23,19 @@ jobs:
       - name: Build
         run: >
           xcodebuild
-          -project Holo.xcodeproj
-          -scheme Holo
+          -project Sidetap.xcodeproj
+          -scheme Sidetap
           -configuration Debug
-          -derivedDataPath /tmp/HoloDerived
+          -derivedDataPath /tmp/SidetapDerived
           CODE_SIGNING_ALLOWED=NO
           build
 
       - name: Unit test
         run: >
           xcodebuild
-          -project Holo.xcodeproj
-          -scheme Holo
+          -project Sidetap.xcodeproj
+          -scheme Sidetap
           -configuration Debug
-          -derivedDataPath /tmp/HoloDerived
+          -derivedDataPath /tmp/SidetapDerived
           CODE_SIGNING_ALLOWED=NO
           test

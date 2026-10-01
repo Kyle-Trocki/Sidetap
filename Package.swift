@@ -2,39 +2,39 @@
 import PackageDescription
 
 let package = Package(
-    name: "Holo",
+    name: "Sidetap",
     platforms: [.macOS(.v14)],
     products: [
-        .library(name: "HoloCore", targets: ["HoloCore"]),
-        .executable(name: "HoloSoak", targets: ["HoloSoak"]),
-        .executable(name: "HoloReplay", targets: ["HoloReplay"])
+        .library(name: "SidetapCore", targets: ["SidetapCore"]),
+        .executable(name: "SidetapSoak", targets: ["SidetapSoak"]),
+        .executable(name: "SidetapReplay", targets: ["SidetapReplay"])
     ],
     targets: [
-        .target(name: "HoloCore", path: "Sources/HoloCore"),
+        .target(name: "SidetapCore", path: "Sources/SidetapCore"),
         .executableTarget(
-            name: "HoloSoak",
-            dependencies: ["HoloCore"],
-            path: "Sources/HoloSoak"
+            name: "SidetapSoak",
+            dependencies: ["SidetapCore"],
+            path: "Sources/SidetapSoak"
         ),
         .target(
-            name: "HoloReplaySupport",
-            dependencies: ["HoloCore"],
-            path: "Sources/HoloReplaySupport"
+            name: "SidetapReplaySupport",
+            dependencies: ["SidetapCore"],
+            path: "Sources/SidetapReplaySupport"
         ),
         .executableTarget(
-            name: "HoloReplay",
-            dependencies: ["HoloCore", "HoloReplaySupport"],
-            path: "Sources/HoloReplay"
+            name: "SidetapReplay",
+            dependencies: ["SidetapCore", "SidetapReplaySupport"],
+            path: "Sources/SidetapReplay"
         ),
         .testTarget(
-            name: "HoloCoreTests",
-            dependencies: ["HoloCore"],
-            path: "Tests/HoloCoreTests"
+            name: "SidetapCoreTests",
+            dependencies: ["SidetapCore"],
+            path: "Tests/SidetapCoreTests"
         ),
         .testTarget(
-            name: "HoloReplayTests",
-            dependencies: ["HoloReplaySupport", "HoloCore"],
-            path: "Tests/HoloReplayTests"
+            name: "SidetapReplayTests",
+            dependencies: ["SidetapReplaySupport", "SidetapCore"],
+            path: "Tests/SidetapReplayTests"
         )
     ]
 )
