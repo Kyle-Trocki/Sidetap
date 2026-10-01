@@ -1,7 +1,8 @@
 # Contributing to Sidetap
 
 Sidetap is a research prototype, so the easiest contributions to review are ones
-that keep the DSP test suite green and respect the four-zone design.
+that keep the DSP test suite green and respect the design: actions run on
+double and triple taps, and calibration uses four zones.
 
 ## Setup
 
@@ -35,9 +36,9 @@ xcodebuild \
 
 Run the unit suite with the same invocation, replacing `build` with `test`.
 
-To run the app itself, use Xcode's normal **Sign to Run Locally** build. The
-`CODE_SIGNING_ALLOWED=NO` bundle lacks the audio-input entitlement and should
-not be launched (see the README's Build section).
+To run the app itself, install a signed build as described in the next
+section. The `CODE_SIGNING_ALLOWED=NO` bundle lacks the audio-input entitlement
+and should not be launched (see the README's Build section).
 
 ## Install a local build
 
@@ -125,7 +126,7 @@ DYLD_FRAMEWORK_PATH=/tmp/SidetapRouteDerived/Build/Products/Debug \
 
 ## Offline replay
 
-Retain evaluation feature vectors by running a new Accuracy Test in the app,
+Retain evaluation feature vectors by running a new Zone Accuracy Test in the app,
 then replay its saved JSON against a freshly trained classifier:
 
 ```sh
@@ -137,7 +138,7 @@ swift run SidetapReplay \
 Add `--json` for machine-readable output. Reports created before feature
 retention show reduced coverage, and their missing attempts remain incorrect in
 the replay denominator. For future WAV replay investigations, enable **Retain
-90 ms debug recordings** before the Accuracy Test and preserve the entire
+90 ms debug recordings** before the Zone Accuracy Test and preserve the entire
 `Sidetap/DebugCaptures` directory alongside the profile and evaluation JSON.
 
 ## Where things live
@@ -153,7 +154,7 @@ the replay denominator. For future WAV replay investigations, enable **Retain
 ## Notes for pull requests
 
 - Keep changes small, and run the unit suite before opening a PR.
-- The four-zone topology is intentional. Six- and nine-zone layouts were tried
+- The four-zone calibration topology is intentional. Six- and nine-zone layouts were tried
   and abandoned (see the README), so PRs should not reopen that decision.
 - DSP changes should preserve the behavior pinned by `Tests/SidetapCoreTests`
   unless the PR is explicitly about changing that behavior.

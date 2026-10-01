@@ -34,10 +34,10 @@ References were reviewed on July 16, 2026.
 
 ## Screen hierarchy
 
-- **Desk:** two continuous two-zone rails around one MacBook silhouette, one compact result strip, and no-profile onboarding in place. Individual zones are not rendered as four floating cards.
-- **Calibration:** one target at a time. Beginning setup is the explicit capture intent; Sidetap then collects ten clean taps spread across the highlighted area, disarms during each move, and automatically arms the next zone after a short transition. A visible Arm control remains available after a pause. A measured consistency check can redo the weakest zone before saving, and Talking rejection capture is surfaced as the recommended final step.
-- **Actions:** a four-row editor grouped by the left and right side of the MacBook. Native pickers progressively reveal only the fields needed for the selected action, including Shortcuts, app/file bookmarks, shell commands, and screenshots.
+- **Desk:** the current gesture, each gesture's assigned action, one compact result strip, and no-profile onboarding in place.
+- **Calibration:** one target at a time on a map of two continuous two-zone rails around one MacBook silhouette. Individual zones are not rendered as four floating cards. Beginning setup is the explicit capture intent; Sidetap then collects ten clean taps spread across the highlighted area, disarms during each move, and automatically arms the next zone after a short transition. A visible Arm control remains available after a pause. A measured consistency check can redo the weakest zone before saving, and Talking rejection capture is surfaced as the recommended final step.
+- **Actions:** a two-row editor, one row for a double tap and one for a triple tap. Native pickers progressively reveal only the fields needed for the selected action, including Shortcuts, app/file bookmarks, shell commands, and screenshot destinations.
 - **Diagnostics:** factual hardware and signal details in a form, with sensing comparisons disclosed on demand.
-- **Accuracy Test:** a focused 60-tap run followed by a plain results table and four-by-four confusion matrix.
+- **Zone Accuracy Test:** a focused run of 60 double taps followed by a plain results table and four-by-four confusion matrix.
 
-The sidebar keeps Desk, Calibration, Actions, and Accuracy Test in workflow order. Hardware and sensing diagnostics live in a separate Advanced section.
+The sidebar keeps Desk, Calibration, and Actions in workflow order. The zone accuracy test and the hardware and sensing diagnostics live in a separate Advanced section, because actions no longer depend on zones.

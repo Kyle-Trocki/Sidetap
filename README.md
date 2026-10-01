@@ -23,23 +23,23 @@ Left Front     └─────────────┘      Right Front
                   Trackpad side
 ```
 
-Sidetap is a research prototype. Automated DSP tests pass, but useful accuracy still has to be measured on each real MacBook, desk, room, and laptop position. No physical accuracy claim is made without a saved 60-tap evaluation from that setup.
+Sidetap is a research prototype. Automated DSP tests pass, but useful accuracy still has to be measured on each real MacBook, desk, room, and laptop position. No physical accuracy claim is made without a saved evaluation from that setup.
 
 The requirement-by-requirement evidence ledger is in [ACCEPTANCE.md](ACCEPTANCE.md).
 
-The recovered physical baseline, failure analysis, and controlled iteration protocol are in [ACCURACY.md](ACCURACY.md).
-
 ## What is implemented
 
-- Four fixed zones: rear and front zones on each side of the MacBook.
+- Double-tap and triple-tap gestures anywhere on the desk, each with its own action.
+- Four fixed calibration zones: rear and front zones on each side of the MacBook.
 - Explicitly armed calibration: ten accepted examples spread across each zone, 40 total, with clear retry guidance for weak, noisy, or clipped taps.
 - A calibration-consistency check that identifies and can redo the weakest zone before saving.
-- Adaptive streaming onset detection, sustained-sound rejection, and fixed 90 ms analysis windows.
+- Adaptive streaming onset detection, sustained-sound rejection, and fixed 90 ms analysis windows that start 12 ms before each onset.
 - Passive tap acoustics, an optional active acoustic probe, and a hybrid mode.
 - Robust feature normalization, a regularized linear zone model backed by nearest-example novelty checks, ambiguity rejection, out-of-distribution rejection, and optional negative examples.
+- A typing check that ignores taps within 300 ms of a physical key press or click, and a noise limit that pauses actions in a loud room.
 - Location-based desk switching: each profile can be pinned to where its desk is, and Sidetap selects it automatically within 300 m.
-- Per-profile actions: visual only, play a sound, copy or speak text, open a website, run a Shortcut, open an application or item, execute a shell command, or capture a screenshot. Both gestures default to visual-only until the user assigns a side effect.
-- Guided 60-tap held-out evaluation with per-zone accuracy, latency, rejected-tap counts, and a confusion matrix.
+- Per-profile actions: visual only, play a sound, copy, paste, or speak text, open a website, run a Shortcut, open an application or item, execute a shell command, or take a screenshot to the Desktop, the clipboard, or both. Both gestures default to visual-only until the user assigns a side effect.
+- A guided held-out zone accuracy test of 60 double taps, with per-zone accuracy, latency, rejected counts, and a confusion matrix.
 - Saved evaluation history is restored after relaunch and scoped to the desk profile that produced it.
 - Signal diagnostics, labeled feature capture, approach comparison, JSON/CSV reports, and opt-in raw debug WAV capture.
 - Sandboxed, local persistence. Raw audio is discarded by default.
@@ -63,7 +63,7 @@ xcodegen generate
 
 Then open `Sidetap.xcodeproj`, select the `Sidetap` scheme, and run it on My Mac. A new install requests microphone permission when calibration begins or when the user explicitly presses Resume; it does not prompt merely because the window opened.
 
-Use Xcode's normal **Sign to Run Locally** build when launching Sidetap. `CODE_SIGNING_ALLOWED=NO` is only for non-GUI verification; its stripped bundle lacks the audio-input entitlement and should not be launched. An ad-hoc local build may still need consent again after its binary changes; selecting an Apple Development team gives macOS a stable signing identity across rebuilds. Within one build, Sidetap coalesces concurrent microphone starts and authorization requests, and its bundle prohibits duplicate app instances.
+Use Xcode's normal **Sign to Run Locally** build when launching Sidetap. `CODE_SIGNING_ALLOWED=NO` is only for non-GUI verification; its stripped bundle lacks the audio-input entitlement and should not be launched. An ad-hoc local build loses its macOS permission grants whenever its binary changes. Selecting an Apple Development team gives macOS a stable signing identity across rebuilds, and so does `scripts/install_local.sh`, which signs each build with a fixed local certificate and installs it in `~/Applications` (see [CONTRIBUTING.md](CONTRIBUTING.md)). Within one build, Sidetap coalesces concurrent microphone starts and authorization requests, and its bundle prohibits duplicate app instances.
 
 A non-signing command-line build is useful for CI or local verification:
 
@@ -88,7 +88,7 @@ xcodebuild \
 7. The zone disarms after ten accepted samples. Move to the next highlighted zone during the short transition; Sidetap arms it automatically. Sounds made during the transition are ignored. If listening is paused, use the visible Arm control after resuming.
 8. Use Undo for the latest sample or Redo Zone if a set was inconsistent.
 9. Review the leave-one-out calibration agreement. If it is weak, redo the identified zone before saving.
-10. Save the 40-sample profile and assign its four actions.
+10. Save the 40-sample profile and assign an action to each gesture.
 
 Talking, typing, touching the laptop, and room noise can be collected as negative examples after the four zones are complete. Talking is recommended: speak normally for a few seconds and Sidetap records only speech peaks that get past the impact gate. Negative examples intentionally do not have to pass the clean-tap quality gate. Only their feature vectors are persisted unless raw debug recording is separately enabled.
 
@@ -142,13 +142,15 @@ The practical target is a stable, rigid desk where taps create repeatable resona
 
 Support is determined by a completed accuracy test on the exact setup, not by material name alone. No desk material is declared supported globally.
 
-## Evaluation
+## Zone accuracy test
 
-Evaluation is separate from calibration and uses new taps. It guides fifteen taps per zone, 60 total. Each zone must be armed, preventing movement and interface sounds from being counted before the user is ready. A detected event made while armed is included even if the classifier rejects it; rejected taps therefore count as incorrect. Response latency runs from the audio tap buffer's monotonic `AVAudioTime` host timestamp through feature extraction, the main-thread handoff, and classification.
+The Zone Accuracy Test, under Advanced, scores how well Sidetap tells the four zones apart. Actions no longer depend on that, so treat it as a diagnostic of the calibration, not of gestures. The app has no built-in test for gestures yet.
+
+The test is separate from calibration and uses new taps. It guides fifteen double taps per zone, 60 total, and combines both taps of each double tap into one zone decision. Each zone must be armed, preventing movement and interface sounds from being counted before the user is ready. A detected event made while armed is included even if the classifier rejects it; rejected taps therefore count as incorrect. Response latency runs from the audio tap buffer's monotonic `AVAudioTime` host timestamp through feature extraction, the main-thread handoff, and classification.
 
 The prototype acceptance targets are:
 
-- At least 80% overall accuracy over a balanced 60-tap session.
+- At least 80% overall accuracy over a balanced session of 60 double taps.
 - Median response latency below 200 ms.
 - No crashes or unbounded memory growth during a 30-minute run.
 
@@ -164,7 +166,7 @@ Before capture starts, Sidetap finds the built-in microphone and speakers by the
 
 The bottom status bar explicitly says when the speaker probe is active.
 
-Onset detection begins with a 0.75-second room-learning period, then adapts its noise floor while requiring a short, high-contrast onset. A second gate reviews the complete 90 ms candidate and rejects events whose effective duration, late energy, and weak early concentration clearly resemble sustained speech. Rejected sustained events also update the adaptive floor during their refractory period, preventing conversation from repeatedly re-arming capture. A separate low-pass path keeps the high-frequency probe from triggering its own capture. Accepted windows retain the untouched full-band channels for active-response feature extraction.
+Onset detection begins with a 0.75-second room-learning period, then adapts its noise floor while requiring a short, high-contrast onset. macOS delivers audio in 100 ms buffers, so the 90 ms analysis window starts 12 ms before the onset, wherever the onset falls in its buffer. A second gate reviews the complete 90 ms candidate and rejects events whose effective duration, late energy, and weak early concentration clearly resemble sustained speech. Rejected sustained events also update the adaptive floor during a 50 ms refractory period, preventing conversation from repeatedly re-arming capture. An accepted tap has no refractory period, so the next tap of a gesture is heard. A separate low-pass path keeps the high-frequency probe from triggering its own capture. Accepted windows retain the untouched full-band channels for active-response feature extraction.
 
 Diagnostics can collect three taps per zone for each approach—36 samples total—and compare leave-one-out accuracy and DSP processing latency. Every set is explicitly armed. The highest measured score becomes the suggested strategy for the next calibration, but the result is bound to the desk profile on which it was measured and cannot silently influence another profile.
 
@@ -177,7 +179,9 @@ AVAudioEngine input
   → full-event impact / sustained-sound gate
   → passive / active feature extraction
   → regularized zone model + nearest-example rejection gates
-  → accepted four-zone decision
+  → tap check: a tap on this desk, whichever zone
+  → noise limit and typing check
+  → tap counter: double or triple tap
   → local action dispatcher
 ```
 
@@ -185,11 +189,11 @@ AVAudioEngine input
 - `Sources/SidetapApp` contains audio capture, app state, local action dispatch, and the native SwiftUI interface.
 - `Sources/SidetapSoak` is a non-GUI synthetic DSP stress runner.
 - `Sources/SidetapRouteCheck` is a non-GUI check of the current Core Audio input/output transport policy.
-- `Tests/SidetapCoreTests` covers guided session totals and ordering, guided-capture quality gates, adaptive room-noise rejection, microphone-request coalescing, the chunked detector-to-classifier pipeline, injected active-probe recovery, shared-spectrum analysis, hardware-route policy, validated local-action planning, negative and ambiguity rejection, evaluation history, strict profile persistence, WAV output, and the exact four-zone topology.
+- `Tests/SidetapCoreTests` covers guided session totals and ordering, guided-capture quality gates, adaptive room-noise rejection, microphone-request coalescing, the chunked detector-to-classifier pipeline, injected active-probe recovery, shared-spectrum analysis, hardware-route policy, validated local-action planning, negative and ambiguity rejection, the tap counter and gesture actions, evaluation history, strict profile persistence, WAV output, and the exact four-zone topology.
 
 Each detected window uses one shared power spectrum for classification, active-response bands, and diagnostics rather than repeating the same FFT. Capture generations discard observations queued by an audio route or strategy that has already been stopped.
 
-The interface rationale and source research are in [DESIGN.md](DESIGN.md). The central rule is that system materials and Liquid Glass support navigation and controls; they are not decoration for content. The desk map uses two continuous two-zone rails instead of four floating cards. The UI deliberately avoids neon gradients, bento metric cards, excessive rounded containers, filler metrics, and continuous ornamental motion.
+The interface rationale and source research are in [DESIGN.md](DESIGN.md). The central rule is that system materials and Liquid Glass support navigation and controls; they are not decoration for content. The calibration map uses two continuous two-zone rails instead of four floating cards. The UI deliberately avoids neon gradients, bento metric cards, excessive rounded containers, filler metrics, and continuous ornamental motion.
 
 ## Privacy and storage
 
@@ -219,14 +223,19 @@ Because the app is sandboxed, these paths live inside Sidetap's app container in
 
 ## Automated verification
 
-Most recent automated check on macOS 26.5.2:
+Most recent automated check, on macOS 26.6.2 with Xcode 26.3:
 
 - Debug and Release app builds: passed with no source warnings.
 - Static analyzer: passed.
-- Unit tests: 68 passed, 0 failed, 0 skipped.
-- Accelerated mixed four-zone synthetic soak at the production confidence threshold: 5,000 events in 0.8 seconds; 4,500/4,500 zone taps correct and 500/500 weak, noisy, clipped, schema-mismatched, or out-of-distribution challenges rejected; zero false accepts; RSS 6.7 → 7.0 MB (+0.3 MB).
-- Earlier all-positive 30-minute synthetic wall-clock soak: 17,186 events; 17,186 correct, 0 rejected, 0 wrong; RSS 6.7 → 6.4 MB (−0.3 MB). This predates the current four-zone topology and is retained only as historical stability evidence.
-- Read-only route check: MacBook Pro Microphone and MacBook Pro Speakers both reported as built-in; Passive, Active, and Hybrid ready.
+- Unit tests: 73 passed, 0 failed, 0 skipped.
+- Synthetic soak in `--fast` mode: 900,000 events in 327 seconds; 810,000/810,000 zone taps correct and 90,000/90,000 weak, noisy, clipped, schema-mismatched, or out-of-distribution challenges rejected; zero false accepts; RSS 7.1 → 7.6 MB (+0.5 MB).
+- Read-only route check with AirPods as the system default: MacBook Pro Microphone and MacBook Pro Speakers both reported as built-in; Passive, Active, and Hybrid ready.
+
+Measured on one MacBook Pro (14-inch, M2 Max) and desk. These are small samples from one setup, not a general accuracy claim:
+
+- Zone accuracy test: 50 of 60 double taps correct (83%), with a 175 ms median response.
+- Recorded gestures replayed through the detector and that profile: 19 of 20 double taps and 20 of 21 triple taps ran their action, and none ran the wrong one.
+- Two minutes of loud-room audio (music and talking) produced no gestures. In 45 seconds of typing, the typing check removed all 38 detections.
 
 Run the unit suite with:
 
@@ -255,6 +264,8 @@ DYLD_FRAMEWORK_PATH=/tmp/SidetapSoakDerived/Build/Products/Release \
   /tmp/SidetapSoakDerived/Build/Products/Release/SidetapSoak --duration 1800
 ```
 
+Add `--fast` to skip the waits between events. It then runs 500 events for each second of `--duration`, which is 900,000 at the default.
+
 The synthetic runner exercises feature extraction, classification, rejection gates, finite-value checks, and resident-memory behavior. It does not exercise AVAudioEngine, microphone permissions, real room noise, physical desk variability, or action dispatch.
 
 Check the current built-in hardware routes without opening Sidetap or requesting microphone access:
@@ -274,13 +285,15 @@ DYLD_FRAMEWORK_PATH=/tmp/SidetapRouteDerived/Build/Products/Debug \
 
 ## Known limitations
 
-- A profile is specific to one MacBook, surface, room arrangement, and laptop position. Sidetap rejects external input devices because they change the sensing path.
+- A profile is specific to one MacBook, surface, room arrangement, and laptop position. Sidetap always captures from the built-in microphone, because another input would change the sensing path.
 - Built-in microphone APIs may expose one aggregate channel rather than independent physical array elements.
 - Soft, unstable, very large, heavily damped, or noisy surfaces may not produce separable zones.
-- Short consonants, typing, laptop touches, dropped objects, and nearby impacts can resemble taps. The sustained-sound gate and profile-specific negatives reduce false positives but cannot guarantee none.
+- Short consonants, laptop touches, dropped objects, and nearby impacts can resemble taps. The sustained-sound gate, the typing check, and profile-specific negatives reduce false positives but cannot guarantee none.
+- Gestures offer two actions. A double tap responds about 0.7 seconds after its second tap, because Sidetap has to wait for a possible third.
+- Light taps can be missed. The detector ignores a tap that peaks below a fixed minimum, and the second tap of a quick double tap is often lighter than the first.
 - Calibration quality depends on consistent natural taps. The UI prevents unarmed sounds from being added, but it cannot know whether the user tapped the intended physical location.
 - The active probe is experimental and can be filtered or audible on some hardware.
-- The 80% and 200 ms targets must still be demonstrated with a real held-out session for each target setup.
+- The 80% and 200 ms targets apply to the zone accuracy test and must still be demonstrated with a real held-out session for each target setup. No built-in test scores gestures.
 - Automated stress results do not replace a 30-minute live microphone and action-dispatch run on the target Mac.
 
 ## Before claiming the prototype is validated
@@ -289,9 +302,10 @@ For every supported Mac/desk combination:
 
 1. Run Diagnostics in a representative quiet and noisy environment.
 2. Calibrate all four zones with the final MacBook position.
-3. Run a new balanced 60-tap evaluation and retain its JSON/CSV report.
+3. Run a new balanced zone accuracy test and retain its JSON/CSV report.
 4. Confirm at least 80% overall accuracy and median response below 200 ms.
-5. Run the live app for 30 minutes with representative taps, conversation, typing, laptop touches, and background noise while monitoring crashes, false triggers, and memory.
+5. Confirm that double and triple taps run their assigned actions in live use.
+6. Run the live app for 30 minutes with representative taps, conversation, typing, laptop touches, and background noise while monitoring crashes, false triggers, and memory.
 
 Until those physical checks are complete, Sidetap should be described as functional experimental software—not a proven acoustic input device.
 
