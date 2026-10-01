@@ -39,6 +39,54 @@ To run the app itself, use Xcode's normal **Sign to Run Locally** build. The
 `CODE_SIGNING_ALLOWED=NO` bundle lacks the audio-input entitlement and should
 not be launched (see the README's Build section).
 
+## Install a local build
+
+To build Sidetap, sign it, and install it in `~/Applications`, run:
+
+```sh
+./scripts/install_local.sh
+```
+
+The script signs every build with the same certificate. macOS ties Microphone,
+Accessibility, and Screen Recording grants to an app's signature, and an ad-hoc
+signature changes with every build, so an ad-hoc build loses its grants each
+time. The script installs outside `/tmp` because System Settings can't list an
+app that runs from there.
+
+Before you run the script for the first time, create a self-signed
+code-signing certificate named `Sidetap Local Signing` in your login keychain.
+Use the system's `/usr/bin/openssl`, because `security import` can't read the
+files that OpenSSL 3 writes by default:
+
+```sh
+cat > /tmp/sidetap-cert.cnf <<'EOF'
+[req]
+distinguished_name = dn
+x509_extensions = ext
+prompt = no
+[dn]
+CN = Sidetap Local Signing
+[ext]
+keyUsage = critical, digitalSignature
+extendedKeyUsage = critical, codeSigning
+basicConstraints = critical, CA:false
+EOF
+/usr/bin/openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
+  -config /tmp/sidetap-cert.cnf -keyout /tmp/sidetap-key.pem -out /tmp/sidetap-cert.pem
+/usr/bin/openssl pkcs12 -export -name "Sidetap Local Signing" -passout pass:sidetap \
+  -inkey /tmp/sidetap-key.pem -in /tmp/sidetap-cert.pem -out /tmp/sidetap.p12
+security import /tmp/sidetap.p12 -P sidetap -T /usr/bin/codesign \
+  -k ~/Library/Keychains/login.keychain-db
+rm /tmp/sidetap-cert.cnf /tmp/sidetap-key.pem /tmp/sidetap-cert.pem /tmp/sidetap.p12
+```
+
+The first time `codesign` uses the certificate, macOS might ask for your login
+password. Choose **Always Allow**. Keychain Access lists the certificate as not
+trusted, which is expected for a self-signed certificate and doesn't stop
+`codesign` from using it.
+
+To sign with a different certificate, set `SIDETAP_SIGN_IDENTITY` to its name.
+
 ## Soak runner
 
 The synthetic DSP stress runner exercises detection, feature extraction,
