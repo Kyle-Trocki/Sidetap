@@ -64,7 +64,6 @@ targets:
         PRODUCT_NAME: Sidetap
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_IDENTITY: Apple Development
-        DEVELOPMENT_TEAM: J7ZMYXJVRR
         ENABLE_APP_SANDBOX: YES
         ENABLE_HARDENED_RUNTIME: YES
   SidetapCoreTests:

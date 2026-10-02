@@ -4,11 +4,6 @@
 
 Sidetap is a fork of [Holo](https://github.com/JustinGamer191/Holo) by JustinGamer191.
 
-<!--
-Future demo GIF placeholder: ![Sidetap demo](docs/sidetap-demo.gif)
-Tip: Record with macOS screen recording, then use ffmpeg's palettegen and paletteuse filters for a crisp, compact GIF.
--->
-
 Sidetap is an experimental native macOS utility that runs an action when you double-tap or triple-tap the desk around a MacBook. It listens through the Mac's microphone, checks locally that each sound is a tap on your desk, and counts the taps.
 
 Sidetap began as zone-based: four zones around the MacBook, each with its own action. Calibration, diagnostics, and the zone accuracy test still use those zones, but actions no longer do, because counting taps proved more reliable than telling zones apart.
