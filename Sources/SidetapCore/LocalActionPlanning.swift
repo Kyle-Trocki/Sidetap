@@ -17,9 +17,9 @@ public enum LocalActionCommand: Equatable, Sendable {
 }
 
 public enum LocalActionPlanner {
-    /// Converts a saved zone action into a validated side-effect command. `nil`
+    /// Converts a saved action into a validated side-effect command. `nil`
     /// means visual feedback only or an action that is not fully configured.
-    public static func command(for action: ZoneActionConfiguration) -> LocalActionCommand? {
+    public static func command(for action: ActionConfiguration) -> LocalActionCommand? {
         switch action.kind {
         case .none:
             return nil
@@ -85,17 +85,5 @@ public enum LocalActionPlanner {
 
     private static func hasContent(_ text: String) -> Bool {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-}
-
-public enum LocalActionDispatchPolicy {
-    /// Automatic side effects are confined to the live Desk surface. Guided
-    /// capture and configuration screens can still classify for feedback, but
-    /// only an accepted Desk decision may run an assigned action.
-    public static func allowsAutomaticDispatch(
-        for decision: ClassificationDecision,
-        isDeskActive: Bool
-    ) -> Bool {
-        isDeskActive && decision.wasAccepted
     }
 }

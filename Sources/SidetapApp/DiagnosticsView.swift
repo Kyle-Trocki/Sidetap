@@ -3,20 +3,14 @@ import SwiftUI
 
 struct DiagnosticsView: View {
     @ObservedObject var model: AppModel
-    @State private var showApproachLab = false
-
-    private var diagnosticLabels: [DiagnosticLabel] {
-        DeskZone.allCases.map(DiagnosticLabel.zone) + [
-            .negative("Talking"), .negative("Typing"), .negative("Laptop touch"), .negative("Background noise")
-        ]
-    }
+    private let diagnosticLabels = ["Tap", "Talking", "Typing", "Laptop touch", "Background noise"]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 5) {
                 Text("Diagnostics")
                     .font(.title.weight(.semibold))
-                Text("Inspect the microphone path, capture labeled examples, and compare sensing approaches on this desk.")
+                Text("Inspect the microphone path and capture labeled examples.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -49,7 +43,7 @@ struct DiagnosticsView: View {
 
                 Section("Latest detected tap") {
                     if model.audio.diagnostics.latestFrequencyResponse.isEmpty {
-                        Text("Tap the desk to inspect its response.")
+                        Text("Tap to inspect the response.")
                             .foregroundStyle(.secondary)
                     } else {
                         spectrumChart(model.audio.diagnostics.latestFrequencyResponse)
@@ -67,8 +61,8 @@ struct DiagnosticsView: View {
 
                 Section("Labeled capture") {
                     Picker("Label", selection: $model.diagnosticLabel) {
-                        ForEach(diagnosticLabels) { label in
-                            Text(label.displayName).tag(label)
+                        ForEach(diagnosticLabels, id: \.self) { label in
+                            Text(label).tag(label)
                         }
                     }
 
@@ -96,20 +90,13 @@ struct DiagnosticsView: View {
                     ))
                     Text(model.debugRecordingEnabled
                          ? "Raw WAV windows are being saved locally until you delete them."
-                         : "Audio is discarded after feature extraction. Profiles contain features, not recordings.")
+                         : "Audio is discarded after feature extraction. The saved calibration contains features, not recordings.")
                         .font(.caption)
                         .foregroundStyle(model.debugRecordingEnabled ? Color.red : Color.secondary)
                     if model.hasDebugRecordings {
                         Button("Delete All Debug Recordings", role: .destructive) {
                             model.clearDebugRecordings()
                         }
-                    }
-                }
-
-                Section("Sensing approach") {
-                    DisclosureGroup("Compare passive, active, and hybrid sensing", isExpanded: $showApproachLab) {
-                        approachLab
-                            .padding(.top, 10)
                     }
                 }
             }
@@ -119,9 +106,6 @@ struct DiagnosticsView: View {
         .padding(36)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(SidetapTheme.background)
-        .onChange(of: model.benchmarkSession != nil) { _, running in
-            if running { showApproachLab = true }
-        }
     }
 
     private func endpointDescription(_ endpoint: AudioEndpointInfo?) -> String {
@@ -139,108 +123,6 @@ struct DiagnosticsView: View {
             return "This sensing approach requires the built-in speakers, which are unavailable."
         case .builtInOutputRequired(let selected):
             return "Active sensing can't find the built-in speakers. The default output is \(selected)."
-        }
-    }
-
-    private var approachLab: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("This comparison collects three taps per zone for each approach, then compares cross-validation accuracy and processing latency. Active and hybrid modes emit a quiet chirp.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            if let session = model.benchmarkSession {
-                ProgressView(value: session.progress)
-                HStack(alignment: .center, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(session.currentStrategy?.displayName ?? "Computing")
-                            .font(.body.weight(.medium))
-                        Text(session.currentZone?.instruction ?? "Comparison complete")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Text("\(session.samples.count) / \(session.targetPerZone * DeskZone.allCases.count * SensingStrategy.allCases.count)")
-                        .font(.caption.monospacedDigit())
-                    Button("Cancel", role: .cancel) { model.cancelApproachBenchmark() }
-                }
-
-                if session.isSettling {
-                    HStack(spacing: 9) {
-                        ProgressView()
-                            .controlSize(.small)
-                        Text("Preparing the microphone…")
-                            .font(.callout.weight(.medium))
-                    }
-                } else if session.isArmed {
-                    HStack(spacing: 8) {
-                        Circle()
-                            .fill(.red)
-                            .frame(width: 7, height: 7)
-                        Text("Capture armed")
-                            .font(.callout.weight(.medium))
-                        if let strategy = session.currentStrategy, let zone = session.currentZone {
-                            Text("Tap \(session.count(strategy: strategy, zone: zone) + 1) of \(session.targetPerZone)")
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                } else if let zone = session.currentZone {
-                    HStack {
-                        Text("Sounds are ignored while you move to \(zone.displayName.lowercased()).")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Button("Arm \(zone.displayName)") { model.armApproachBenchmarkZone() }
-                            .sidetapPrimaryButton()
-                            .disabled(!model.audio.isListening)
-                    }
-                }
-
-                if let issue = model.guidedCaptureIssue {
-                    Label(issue.guidance, systemImage: "arrow.counterclockwise.circle")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                }
-            } else {
-                Button(model.approachComparison == nil ? "Run Comparison" : "Run Again") {
-                    model.beginApproachBenchmark()
-                }
-                .sidetapPrimaryButton()
-            }
-
-            if let comparison = model.approachComparison {
-                if comparison.profileID != model.selectedProfile?.id {
-                    Label(
-                        "This saved comparison belongs to a different or unscoped desk setup. Run it again before using the result here.",
-                        systemImage: "info.circle"
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
-                Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 8) {
-                    GridRow {
-                        Text("Approach").foregroundStyle(.secondary)
-                        Text("CV accuracy").foregroundStyle(.secondary)
-                        Text("DSP latency").foregroundStyle(.secondary)
-                        Text("Samples").foregroundStyle(.secondary)
-                    }
-                    ForEach(comparison.scores) { score in
-                        GridRow {
-                            HStack(spacing: 5) {
-                                Text(score.strategy.displayName)
-                                if score.strategy == comparison.selectedStrategy,
-                                   model.applicableApproachComparison != nil {
-                                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                                }
-                            }
-                            Text("\(Int(score.crossValidationAccuracy * 100))%").monospacedDigit()
-                            Text(String(format: "%.1f ms", score.medianProcessingLatencyMilliseconds)).monospacedDigit()
-                            Text("\(score.sampleCount)").monospacedDigit()
-                        }
-                    }
-                }
-                .font(.caption)
-            }
         }
     }
 

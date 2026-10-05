@@ -20,30 +20,24 @@ struct CalibrationView: View {
     private var setup: some View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Set up your desk")
+                Text("Calibrate your taps")
                     .font(.title.weight(.semibold))
-                Text("Ten clean taps in each of four broad zones. Spread them around each highlighted area so Sidetap learns the whole zone, not one point.")
+                Text("You double-tap \(CalibrationGuidance.repetitionsPerGesture) times, and then triple-tap \(CalibrationGuidance.repetitionsPerGesture) times. Sidetap learns how your taps sound and how fast you tap, and uses both for every gesture, including the ones you add later.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
 
             Form {
-                Section("Profile") {
-                    TextField("Name", text: $model.calibrationDraft.name, prompt: Text("My Desk"))
-                    TextField("Surface", text: $model.calibrationDraft.surfaceDescription, prompt: Text("Wood, laminate, glass…"))
-                    TextField("MacBook position", text: $model.calibrationDraft.laptopPositionNote, prompt: Text("Centered, near the back edge…"))
-                }
-
                 Section("Sensing") {
-                    Picker("Approach", selection: $model.calibrationDraft.strategy) {
+                    Picker("Approach", selection: $model.calibrationStrategy) {
                         ForEach(SensingStrategy.allCases) { strategy in
                             Text(strategy.displayName).tag(strategy)
                         }
                     }
-                    Text(model.calibrationDraft.strategy.detail)
+                    Text(model.calibrationStrategy.detail)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    if model.calibrationDraft.strategy != .passive {
+                    if model.calibrationStrategy != .passive {
                         Label("Uses a quiet repeating speaker chirp", systemImage: "speaker.wave.2")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -53,45 +47,15 @@ struct CalibrationView: View {
                 Section("Before calibration") {
                     Label("Put the MacBook where it normally stays", systemImage: "macbook")
                     Label("Clear objects and cables that touch the MacBook", systemImage: "rectangle.dashed")
-                    Label("Use one finger and a similar natural force, but vary the position within each zone", systemImage: "hand.tap")
+                    Label("Tap where and how you will in everyday use, and pause for a second between gestures", systemImage: "hand.tap")
                 }
 
                 Section {
-                    if let comparison = model.applicableApproachComparison {
-                        Label(
-                            "The latest diagnostics comparison selected \(comparison.selectedStrategy.displayName).",
-                            systemImage: "checkmark.circle"
-                        )
-                    } else {
-                        Label(
-                            model.selectedProfile == nil
-                                ? "Passive sensing is selected until you compare approaches in Diagnostics."
-                                : "This profile keeps its saved approach until you compare approaches on this desk.",
-                            systemImage: "info.circle"
-                        )
+                    Button(model.profile == nil ? "Begin Calibration" : "Recalibrate") {
+                        model.beginCalibration()
                     }
-
-                    HStack {
-                        if let profile = model.selectedProfile {
-                            Button("Recalibrate \(profile.name)") {
-                                model.beginCalibration(draft: model.calibrationDraft, recalibrating: profile)
-                            }
-                            .sidetapPrimaryButton()
-                            .controlSize(.large)
-
-                            Button("Create New Profile") {
-                                model.beginCalibration(draft: model.calibrationDraft)
-                            }
-                            .sidetapSecondaryButton()
-                        } else {
-                            Button("Begin Calibration") {
-                                model.beginCalibration(draft: model.calibrationDraft)
-                            }
-                            .sidetapPrimaryButton()
-                            .controlSize(.large)
-                        }
-                    }
-                    .disabled(model.calibrationDraft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .sidetapPrimaryButton()
+                    .controlSize(.large)
                 }
             }
             .formStyle(.grouped)
@@ -106,14 +70,14 @@ struct CalibrationView: View {
             VStack(spacing: 22) {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(session.zonesComplete ? "All zones captured" : session.currentZone?.displayName ?? "Calibration")
+                        Text(session.currentGesture.map { "\($0.displayName)s" } ?? "Calibration captured")
                             .font(.title.weight(.semibold))
-                        Text(session.zonesComplete ? "Save the profile, then assign actions." : instruction(for: session))
+                        Text(session.gesturesComplete ? "Save the calibration, then assign actions." : instruction(for: session))
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Text("\(session.positiveSamples.count) of \(session.totalRequired)")
+                    Text("\(session.gestures.count) of \(session.totalRequired)")
                         .font(.callout.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
@@ -121,20 +85,10 @@ struct CalibrationView: View {
                 ProgressView(value: session.progress)
                     .accessibilityLabel("Calibration progress")
 
-                DeskMapView(
-                    activeZone: nil,
-                    targetZone: session.currentZone,
-                    confidence: 0,
-                    signalStrength: model.audio.liveLevel,
-                    isListening: model.audio.isListening,
-                    counts: DeskZone.allCases.map { session.count(for: $0) }
-                )
-                .frame(maxWidth: 760)
-
-                if session.zonesComplete {
-                    completionControls(session)
+                if let gesture = session.currentGesture {
+                    gestureControls(session, gesture: gesture)
                 } else {
-                    zoneControls(session)
+                    completionControls(session)
                 }
             }
             .frame(maxWidth: 820)
@@ -143,13 +97,14 @@ struct CalibrationView: View {
         }
     }
 
-    private func zoneControls(_ session: CalibrationSession) -> some View {
+    // SwiftUI has its own TapGesture, so the one that counts taps needs its module name.
+    private func gestureControls(_ session: CalibrationSession, gesture: SidetapCore.TapGesture) -> some View {
         VStack(spacing: 14) {
             if session.isSettling {
                 HStack(spacing: 9) {
                     ProgressView()
                         .controlSize(.small)
-                    Text(settlingMessage(for: session))
+                    Text(session.gestures.isEmpty ? "Preparing…" : "Get ready • listening starts automatically")
                         .font(.headline)
                 }
                 .accessibilityElement(children: .combine)
@@ -158,38 +113,49 @@ struct CalibrationView: View {
                     Circle()
                         .fill(.red)
                         .frame(width: 7, height: 7)
-                    Text("Listening for this zone")
+                    Text("Listening")
                         .font(.headline)
-                    if let zone = session.currentZone {
-                        Text("Tap \(session.count(for: zone) + 1) of \(session.targetPerZone)")
-                            .font(.callout.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                    }
+                    Text("\(gesture.displayName) \(session.count(for: gesture) + 1) of \(session.repetitions)")
+                        .font(.callout.monospacedDigit())
+                        .foregroundStyle(.secondary)
                 }
                 .accessibilityElement(children: .combine)
-            } else if let zone = session.currentZone {
-                Text("Move your hand to the \(zone.displayName.lowercased()) area. Sidetap ignores all sounds until you arm the zone.")
+
+                // One dot for each tap of the gesture, filled as Sidetap hears it.
+                HStack(spacing: 12) {
+                    ForEach(0..<gesture.rawValue, id: \.self) { index in
+                        Circle()
+                            .fill(index < session.attempt.taps.count ? Color.accentColor : Color.secondary.opacity(0.25))
+                            .frame(width: 18, height: 18)
+                    }
+                }
+                .padding(.vertical, 6)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Taps heard")
+                .accessibilityValue("\(session.attempt.taps.count) of \(gesture.rawValue)")
+            } else {
+                Text("Sidetap ignores all sounds until you start listening.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-                Button("Arm \(zone.displayName)") {
-                    model.armCalibrationZone()
+                Button("Start Listening") {
+                    model.armCalibration()
                 }
                 .sidetapPrimaryButton()
                 .controlSize(.large)
                 .disabled(!model.audio.isListening)
-                .help(model.audio.isListening ? "Start collecting this zone" : "Resume the microphone before arming")
+                .help(model.audio.isListening ? "Start collecting this gesture" : "Resume the microphone first")
                 .accessibilityHint(model.audio.isListening
-                    ? "Starts listening for taps in this zone."
-                    : "The microphone is paused. Resume it before arming.")
+                    ? "Starts listening for this gesture."
+                    : "The microphone is paused. Resume it first.")
             }
 
-            if let issue = model.guidedCaptureIssue {
-                Label(issue.guidance, systemImage: "arrow.counterclockwise.circle")
+            if let guidance = model.calibrationGuidance {
+                Label(guidance, systemImage: "arrow.counterclockwise.circle")
                     .font(.callout)
                     .foregroundStyle(.orange)
                     .multilineTextAlignment(.center)
-                    .accessibilityLabel("Capture guidance: \(issue.guidance)")
+                    .accessibilityLabel("Capture guidance: \(guidance)")
             } else if let quality = model.audio.diagnostics.latestSignalQuality {
                 HStack(spacing: 18) {
                     Label(quality.summary, systemImage: quality.score > 0.48 ? "checkmark.circle" : "exclamationmark.circle")
@@ -205,16 +171,10 @@ struct CalibrationView: View {
 
             HStack {
                 Button("Undo", systemImage: "arrow.uturn.backward") {
-                    model.undoLastCalibrationTap()
+                    model.undoLastCalibrationGesture()
                 }
                 .sidetapSecondaryButton()
-                .disabled(session.positiveSamples.isEmpty)
-
-                Button("Redo Zone", systemImage: "arrow.counterclockwise") {
-                    model.retryCalibrationZone()
-                }
-                .sidetapSecondaryButton()
-                .disabled(session.positiveSamples.isEmpty)
+                .disabled(session.gestures.isEmpty)
 
                 Spacer()
 
@@ -229,46 +189,30 @@ struct CalibrationView: View {
     }
 
     private func completionControls(_ session: CalibrationSession) -> some View {
-        let weakest = model.calibrationValidation.flatMap { weakestResult(in: $0) }
-        let needsReview = (model.calibrationValidation?.accuracy ?? 1) < CalibrationGuidance.minimumCleanAgreement
-
-        return VStack(alignment: .leading, spacing: 14) {
-            if let validation = model.calibrationValidation {
-                consistencyReview(validation)
-                Divider()
-            }
+        VStack(alignment: .leading, spacing: 14) {
+            Label(
+                String(format: "Gestures allow up to %.2f seconds between taps, based on your pace.", session.maximumTapGap),
+                systemImage: "metronome"
+            )
+            .font(.callout)
 
             HStack {
-                if needsReview, let weakest {
-                    Button("Redo \(weakest.zone.displayName)") {
-                        model.retryCalibrationZone(weakest.zone)
-                    }
-                    .sidetapPrimaryButton()
-                    .controlSize(.large)
-
-                    Menu("Save Anyway") {
-                        Button("Save and Set Actions") {
-                            model.finishCalibration(openActions: true)
-                        }
-                        Button("Save for Later") {
-                            model.finishCalibration()
-                        }
-                    }
-                    .sidetapSecondaryButton()
-                } else {
-                    Button("Save and Set Actions") {
-                        model.finishCalibration(openActions: true)
-                    }
-                    .sidetapPrimaryButton()
-                    .controlSize(.large)
-
-                    Button("Save for Later") {
-                        model.finishCalibration()
-                    }
-                    .sidetapSecondaryButton()
+                Button("Save and Set Actions") {
+                    model.finishCalibration(openActions: true)
                 }
+                .sidetapPrimaryButton()
+                .controlSize(.large)
+
+                Button("Save for Later") {
+                    model.finishCalibration()
+                }
+                .sidetapSecondaryButton()
 
                 Spacer()
+
+                Button("Cancel", role: .cancel) {
+                    model.cancelCalibration()
+                }
             }
 
             DisclosureGroup("Teach Sidetap sounds to reject (recommended)", isExpanded: $showRejectionTraining) {
@@ -310,52 +254,12 @@ struct CalibrationView: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
-    private func consistencyReview(_ validation: CrossValidationResult) -> some View {
-        let weakest = weakestResult(in: validation)
-        let needsReview = validation.accuracy < CalibrationGuidance.minimumCleanAgreement
-
-        return VStack(alignment: .leading, spacing: 8) {
-            Label(
-                "Calibration agreement: \(Int(validation.accuracy * 100))%",
-                systemImage: needsReview ? "exclamationmark.triangle" : "checkmark.circle"
-            )
-            .font(.headline)
-            .foregroundStyle(needsReview ? Color.orange : Color.primary)
-
-                    Text("Each tap was classified while left out of training. This checks consistency; it is not the separate accuracy test.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            if needsReview, let weakest {
-                Text("Weakest zone: \(weakest.zone.displayName) · \(Int(weakest.accuracy * 100))%. Recapture it for a cleaner profile, or save anyway from the secondary menu.")
-                    .font(.callout)
-            }
-        }
-    }
-
-    private func weakestResult(in validation: CrossValidationResult) -> ZoneAccuracy? {
-        validation.perZoneAccuracy.min { lhs, rhs in
-            if lhs.accuracy == rhs.accuracy { return lhs.zone.rawValue < rhs.zone.rawValue }
-            return lhs.accuracy < rhs.accuracy
-        }
-    }
-
     private func instruction(for session: CalibrationSession) -> String {
-        guard session.currentZone != nil else { return "" }
-        if session.isSettling {
-            return "Move to the highlighted zone. Listening starts automatically."
-        }
+        guard let gesture = session.currentGesture else { return "" }
+        let verb = gesture == .double ? "Double-tap" : "Triple-tap"
         if session.isArmed {
-            return "Spread natural taps across the highlighted area and pause between taps."
+            return "\(verb) the way you will in everyday use. Wait for the count to go up before the next one."
         }
-        return "Move to the highlighted zone, then arm it when ready."
-    }
-
-    private func settlingMessage(for session: CalibrationSession) -> String {
-        guard let zone = session.currentZone else { return "Preparing…" }
-        if session.positiveSamples.isEmpty {
-            return "Preparing \(zone.displayName)…"
-        }
-        return "Move to \(zone.displayName) • listening starts automatically"
+        return "\(verb) \(session.repetitions) times, with a pause after each one."
     }
 }

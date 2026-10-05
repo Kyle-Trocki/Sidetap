@@ -1,32 +1,7 @@
 import AppKit
 import Combine
-import CoreLocation
 import Foundation
 import SidetapCore
-
-enum DiagnosticLabel: Hashable, Identifiable {
-    case zone(DeskZone)
-    case negative(String)
-
-    var id: String {
-        switch self {
-        case .zone(let zone): return "zone-\(zone.rawValue)"
-        case .negative(let label): return "negative-\(label)"
-        }
-    }
-
-    var displayName: String {
-        switch self {
-        case .zone(let zone): return zone.displayName
-        case .negative(let label): return label
-        }
-    }
-
-    var zone: DeskZone? {
-        if case .zone(let zone) = self { return zone }
-        return nil
-    }
-}
 
 enum SidetapStorageError: Error, LocalizedError {
     case unavailable(String)
@@ -42,53 +17,33 @@ enum SidetapStorageError: Error, LocalizedError {
 @MainActor
 final class AppModel: ObservableObject {
     @Published var section: AppSection = .live
-    @Published private(set) var profiles: [SidetapProfile] = []
-    @Published var selectedProfileID: UUID?
-    @Published private(set) var activeZone: DeskZone?
+    /// The saved calibration and actions, or nil before the first calibration.
+    @Published private(set) var profile: SidetapProfile?
     @Published private(set) var lastDecision: ClassificationDecision?
     @Published private(set) var lastGesture: TapGesture?
     @Published private(set) var pendingTapCount = 0
-    @Published private(set) var statusMessage = "Ready to map your desk"
+    @Published private(set) var statusMessage = "Ready to learn your taps"
     @Published private(set) var calibrationSession: CalibrationSession?
-    @Published private(set) var calibrationValidation: CrossValidationResult?
-    @Published private(set) var evaluationSession: EvaluationSession?
-    @Published private(set) var latestEvaluation: EvaluationReport?
-    @Published private(set) var evaluationHistory: [EvaluationReport] = []
-    @Published private(set) var latestEvaluationIsPersisted = false
-    @Published private(set) var benchmarkSession: BenchmarkSession?
-    @Published private(set) var approachComparison: ApproachComparison?
     @Published private(set) var diagnosticCaptures: [DiagnosticCaptureRecord] = []
-    @Published var diagnosticLabel: DiagnosticLabel = .zone(.leftTop)
+    @Published var diagnosticLabel = "Tap"
     @Published var diagnosticCaptureArmed = false
-    @Published private(set) var guidedCaptureIssue: GuidedCaptureQualityIssue?
+    /// What to change before the next calibration attempt, when the last one didn't count.
+    @Published private(set) var calibrationGuidance: String?
     @Published var debugRecordingEnabled = false
     @Published private(set) var hasDebugRecordings = false
     @Published var errorMessage: String?
-    @Published var showsNewLocationSuggestion = false
 
     let audio = AudioCaptureService()
-    @Published var calibrationDraft = CalibrationDraft()
+    @Published var calibrationStrategy = SensingStrategy.passive
 
     private let profileStore: ProfileStore?
-    private let evaluationStore: EvaluationStore?
-    private let comparisonStore: ApproachComparisonStore?
     private let debugStore: DebugRecordingStore?
     private let actionDispatcher = LocalActionDispatcher()
-    private let locator = DeskLocator()
-    private var latestLocation: CLLocation?
-    private var suggestedLocation: CLLocation?
-    private var pinPendingProfileID: UUID?
-    private var doubleTap = DoubleTapRecognizer()
     private var gesture = TapGestureCounter()
     private var gestureTask: Task<Void, Never>?
-    private var recalibratingProfileID: UUID?
     private var calibrationAcceptAfter = Date.distantPast
-    private var evaluationAcceptAfter = Date.distantPast
-    private var benchmarkAcceptAfter = Date.distantPast
     private var calibrationArmTask: Task<Void, Never>?
-    private var evaluationArmTask: Task<Void, Never>?
-    private var benchmarkArmTask: Task<Void, Never>?
-    private var activeZoneClearTask: Task<Void, Never>?
+    private var calibrationAttemptTask: Task<Void, Never>?
     private var pausedByUser = false
     private var cancellables: Set<AnyCancellable> = []
 
@@ -97,17 +52,7 @@ final class AppModel: ObservableObject {
         do { profileStore = try ProfileStore() }
         catch {
             profileStore = nil
-            startupErrors.append("Profiles: \(error.localizedDescription)")
-        }
-        do { evaluationStore = try EvaluationStore() }
-        catch {
-            evaluationStore = nil
-            startupErrors.append("Evaluations: \(error.localizedDescription)")
-        }
-        do { comparisonStore = try ApproachComparisonStore() }
-        catch {
-            comparisonStore = nil
-            startupErrors.append("Sensing comparison: \(error.localizedDescription)")
+            startupErrors.append("Calibration: \(error.localizedDescription)")
         }
         do { debugStore = try DebugRecordingStore() }
         catch {
@@ -120,23 +65,11 @@ final class AppModel: ObservableObject {
             catch { startupErrors.append("Debug recordings: \(error.localizedDescription)") }
         }
         if let profileStore {
-            do { profiles = try profileStore.loadAll() }
-            catch { startupErrors.append("Profiles: \(error.localizedDescription)") }
+            do { profile = try profileStore.load() }
+            catch { startupErrors.append("Calibration: \(error.localizedDescription)") }
         }
-        selectedProfileID = profiles.first?.id
-        if let evaluationStore {
-            do { evaluationHistory = try evaluationStore.loadAll() }
-            catch { startupErrors.append("Evaluations: \(error.localizedDescription)") }
-        }
-        refreshLatestEvaluation()
-        if let comparisonStore {
-            do { approachComparison = try comparisonStore.load() }
-            catch { startupErrors.append("Sensing comparison: \(error.localizedDescription)") }
-        }
-        if let profile = profiles.first {
-            calibrationDraft = draft(for: profile)
-        } else {
-            calibrationDraft.strategy = applicableApproachComparison?.selectedStrategy ?? .passive
+        if let profile {
+            calibrationStrategy = profile.sensingStrategy
         }
         if !startupErrors.isEmpty {
             statusMessage = "Local storage needs attention"
@@ -148,40 +81,19 @@ final class AppModel: ObservableObject {
         }
         audio.onRouteInvalidated = { [weak self] message in
             self?.disarmAllCaptureIntents()
-            self?.activeZone = nil
             self?.statusMessage = "Built-in audio route required"
             self?.errorMessage = message
         }
         actionDispatcher.onAsyncError = { [weak self] error in
             self?.errorMessage = "The assigned action failed. \(error.localizedDescription)"
         }
-        locator.onUpdate = { [weak self] location in
-            self?.handleLocation(location)
-        }
-        locator.onDenied = { [weak self] in
-            guard let self, self.pinPendingProfileID != nil else { return }
-            self.pinPendingProfileID = nil
-            self.errorMessage = "Location access is off. To switch desks automatically, turn on Sidetap in System Settings › Privacy & Security › Location Services."
-        }
-        if profiles.contains(where: { $0.location != nil }) {
-            locator.start()
-        }
         audio.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
         }.store(in: &cancellables)
     }
 
-    var selectedProfile: SidetapProfile? {
-        guard let selectedProfileID else { return profiles.first }
-        return profiles.first { $0.id == selectedProfileID }
-    }
-
     var guidedSection: AppSection? {
-        GuidedNavigationGate.guidedSection(
-            calibrationActive: calibrationSession != nil,
-            evaluationActive: evaluationSession != nil,
-            benchmarkActive: benchmarkSession != nil
-        )
+        GuidedNavigationGate.guidedSection(calibrationActive: calibrationSession != nil)
     }
 
     func canNavigate(to candidate: AppSection) -> Bool {
@@ -190,31 +102,18 @@ final class AppModel: ObservableObject {
 
     var targetStrategy: SensingStrategy {
         SensingStrategyResolver.resolve(
-            benchmark: benchmarkSession?.currentStrategy,
-            calibration: calibrationSession?.draft.strategy,
-            profile: selectedProfile?.sensingStrategy,
-            comparison: applicableApproachComparison?.selectedStrategy
+            calibration: calibrationSession?.strategy,
+            profile: profile?.sensingStrategy
         )
-    }
-
-    var applicableApproachComparison: ApproachComparison? {
-        guard let comparison = approachComparison else { return nil }
-        return comparison.applies(to: selectedProfile?.id) ? comparison : nil
     }
 
     func activate() async {
         do {
             try await audio.start(strategy: targetStrategy)
-            if let zone = calibrationSession?.currentZone {
-                statusMessage = "Calibration ready • move to \(zone.displayName), then arm"
-            } else if let zone = evaluationSession?.currentZone {
-                statusMessage = "Accuracy test ready • move to \(zone.displayName), then arm"
-            } else if let benchmark = benchmarkSession,
-                      let strategy = benchmark.currentStrategy,
-                      let zone = benchmark.currentZone {
-                statusMessage = "Sensing comparison ready • \(strategy.displayName) • \(zone.displayName)"
+            if let gesture = calibrationSession?.currentGesture {
+                statusMessage = "Calibration ready • \(gesture.displayName) • start listening when ready"
             } else {
-                statusMessage = selectedProfile == nil ? "Listening • calibration needed" : "Listening for desk taps"
+                statusMessage = profile == nil ? "Listening • calibration needed" : "Listening for taps"
             }
         } catch is CancellationError {
             return
@@ -225,9 +124,9 @@ final class AppModel: ObservableObject {
     }
 
     func activateOnLaunch() async {
-        guard selectedProfile != nil else {
+        guard profile != nil else {
             section = .calibrate
-            statusMessage = "Setup required • calibrate the four desk zones"
+            statusMessage = "Setup required • calibrate your taps"
             return
         }
 
@@ -235,7 +134,7 @@ final class AppModel: ObservableObject {
         case .authorized:
             await activate()
         case .notDetermined:
-            statusMessage = selectedProfile == nil
+            statusMessage = profile == nil
                 ? "Microphone access will be requested when calibration begins"
                 : "Press Resume to enable microphone access"
         case .unavailable:
@@ -249,8 +148,7 @@ final class AppModel: ObservableObject {
             disarmAllCaptureIntents()
             audio.stop()
             statusMessage = "Paused"
-            activeZone = nil
-        } else if selectedProfile == nil && guidedSection == nil {
+        } else if profile == nil && guidedSection == nil {
             openSetup()
         } else {
             pausedByUser = false
@@ -261,47 +159,26 @@ final class AppModel: ObservableObject {
     func openSetup() {
         guard guidedSection == nil else { return }
         section = .calibrate
-        statusMessage = "Setup required • calibrate the four desk zones"
+        statusMessage = "Setup required • calibrate your taps"
     }
 
-    func selectProfile(_ id: UUID?) {
-        guard guidedSection == nil else { return }
-        selectedProfileID = id
-        activeZoneClearTask?.cancel()
-        activeZone = nil
-        lastDecision = nil
-        refreshLatestEvaluation()
-        if let profile = selectedProfile {
-            calibrationDraft = draft(for: profile)
-        }
-        Task {
-            do { try await reconfigureListeningAudio(to: targetStrategy) }
-            catch { errorMessage = error.localizedDescription }
-        }
-    }
-
-    func beginCalibration(draft: CalibrationDraft, recalibrating: SidetapProfile? = nil) {
+    func beginCalibration() {
         pausedByUser = false
         calibrationArmTask?.cancel()
-        evaluationArmTask?.cancel()
-        benchmarkArmTask?.cancel()
-        calibrationDraft = draft
-        recalibratingProfileID = recalibrating?.id
-        calibrationSession = CalibrationSession(draft: draft)
-        calibrationValidation = nil
-        guidedCaptureIssue = nil
+        calibrationAttemptTask?.cancel()
+        let strategy = calibrationStrategy
+        calibrationSession = CalibrationSession(strategy: strategy)
+        calibrationGuidance = nil
         calibrationAcceptAfter = Date().addingTimeInterval(0.5)
-        evaluationSession = nil
-        benchmarkSession = nil
         section = .calibrate
-        statusMessage = "Calibration • \(DeskZone.leftTop.displayName)"
+        statusMessage = "Calibration • \(TapGesture.double.displayName)"
         Task {
             do {
-                try await prepareGuidedAudio(to: draft.strategy)
+                try await prepareGuidedAudio(to: strategy)
                 guard calibrationSession != nil,
                       audio.isListening,
-                      audio.strategy == draft.strategy else { return }
-                armCalibrationZone()
+                      audio.strategy == strategy else { return }
+                armCalibration()
             }
             catch is CancellationError { }
             catch { errorMessage = error.localizedDescription }
@@ -310,18 +187,14 @@ final class AppModel: ObservableObject {
 
     func prepareRecalibration() {
         guard guidedSection == nil else { return }
-        if let profile = selectedProfile {
-            calibrationDraft = draft(for: profile)
-        }
         section = .calibrate
     }
 
     func cancelCalibration() {
         calibrationArmTask?.cancel()
+        calibrationAttemptTask?.cancel()
         calibrationSession = nil
-        calibrationValidation = nil
-        guidedCaptureIssue = nil
-        recalibratingProfileID = nil
+        calibrationGuidance = nil
         statusMessage = "Calibration cancelled"
         Task {
             do { try await reconfigureListeningAudio(to: targetStrategy) }
@@ -329,18 +202,18 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func armCalibrationZone() {
-        guard var session = calibrationSession, let zone = session.currentZone else { return }
+    func armCalibration() {
+        guard var session = calibrationSession, let gesture = session.currentGesture else { return }
         calibrationArmTask?.cancel()
         session.isArmed = false
         session.isSettling = true
-        guidedCaptureIssue = nil
+        calibrationGuidance = nil
         calibrationSession = session
         statusMessage = "Get ready • listening starts in one second"
-        scheduleCalibrationArm(for: zone, delayNanoseconds: 1_000_000_000)
+        scheduleCalibrationArm(for: gesture, delayNanoseconds: 1_000_000_000)
     }
 
-    private func scheduleCalibrationArm(for zone: DeskZone, delayNanoseconds: UInt64) {
+    private func scheduleCalibrationArm(for gesture: TapGesture, delayNanoseconds: UInt64) {
         calibrationArmTask?.cancel()
         calibrationArmTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: delayNanoseconds)
@@ -348,14 +221,15 @@ final class AppModel: ObservableObject {
                   let self,
                   var current = self.calibrationSession,
                   self.audio.isListening,
-                  self.audio.strategy == current.draft.strategy,
-                  current.currentZone == zone,
+                  self.audio.strategy == current.strategy,
+                  current.currentGesture == gesture,
                   current.isSettling else { return }
             current.isSettling = false
             current.isArmed = true
+            current.attempt = CalibrationAttempt()
             self.calibrationAcceptAfter = Date()
             self.calibrationSession = current
-            self.statusMessage = "Calibration armed • \(zone.displayName) • tap 1 of \(current.targetPerZone)"
+            self.statusMessage = "Listening • \(gesture.displayName) \(current.count(for: gesture) + 1) of \(current.repetitions)"
         }
     }
 
@@ -363,125 +237,71 @@ final class AppModel: ObservableObject {
         calibrationSession?.negativeLabel = label
         calibrationSession?.isArmed = label != nil
         calibrationSession?.isSettling = false
-        guidedCaptureIssue = nil
+        calibrationGuidance = nil
         calibrationAcceptAfter = Date().addingTimeInterval(label == nil ? 0 : 0.8)
         if let label {
             statusMessage = "Rejection training • make a \(label.lowercased()) sound"
         } else {
-            statusMessage = "Calibration zones complete"
+            statusMessage = "Calibration gestures complete"
         }
     }
 
     func clearNegativeExamples(label: String) {
         guard var session = calibrationSession else { return }
-        session.negativeSamples.removeAll { $0.negativeLabel == label }
+        session.negativeSamples.removeAll { $0.label == label }
         if session.negativeLabel == label {
             session.negativeLabel = nil
             session.isArmed = false
             session.isSettling = false
         }
-        guidedCaptureIssue = nil
+        calibrationGuidance = nil
         calibrationSession = session
         statusMessage = "Cleared \(label.lowercased()) examples"
     }
 
-    func undoLastCalibrationTap() {
+    func undoLastCalibrationGesture() {
         calibrationArmTask?.cancel()
+        calibrationAttemptTask?.cancel()
         guard var session = calibrationSession else { return }
         if session.negativeLabel != nil, !session.negativeSamples.isEmpty {
             session.negativeSamples.removeLast()
-        } else if !session.positiveSamples.isEmpty {
-            session.positiveSamples.removeLast()
+        } else if !session.gestures.isEmpty {
+            session.gestures.removeLast()
         }
+        session.attempt = CalibrationAttempt()
         session.isArmed = false
         session.isSettling = false
-        calibrationValidation = nil
-        guidedCaptureIssue = nil
+        calibrationGuidance = nil
         calibrationSession = session
         calibrationAcceptAfter = Date().addingTimeInterval(0.35)
-        if let zone = session.currentZone {
-            statusMessage = "\(zone.displayName) • tap \(session.count(for: zone) + 1) of \(session.targetPerZone)"
+        if let gesture = session.currentGesture {
+            statusMessage = "\(gesture.displayName) \(session.count(for: gesture) + 1) of \(session.repetitions) • start listening when ready"
         }
-    }
-
-    func retryCalibrationZone(_ requestedZone: DeskZone? = nil) {
-        calibrationArmTask?.cancel()
-        guard var session = calibrationSession else { return }
-        let zone: DeskZone?
-        if let requestedZone {
-            zone = requestedZone
-        } else {
-            let current = session.currentZone
-            if let current, session.count(for: current) > 0 {
-                zone = current
-            } else if let current {
-                zone = DeskZone.allCases.last {
-                    $0.rawValue < current.rawValue && session.count(for: $0) > 0
-                }
-            } else {
-                zone = DeskZone.allCases.last
-            }
-        }
-        guard let zone else { return }
-        session.positiveSamples.removeAll { $0.zone == zone }
-        session.negativeLabel = nil
-        session.isArmed = false
-        session.isSettling = false
-        calibrationValidation = nil
-        guidedCaptureIssue = nil
-        calibrationSession = session
-        calibrationAcceptAfter = Date().addingTimeInterval(0.5)
-        statusMessage = "Retry \(zone.displayName) • tap 1 of \(session.targetPerZone)"
     }
 
     func finishCalibration(openActions: Bool = false) {
-        guard let session = calibrationSession, session.zonesComplete else { return }
+        guard let session = calibrationSession, session.gesturesComplete else { return }
         do {
             let classifier = try TrainedTapClassifier.train(
-                positiveExamples: session.positiveSamples,
-                negativeExamples: session.negativeSamples
+                gestures: session.gestures.map(\.taps),
+                negativeExamples: session.negativeSamples.map(\.feature)
             )
-            let crossValidation = try calibrationValidation
-                ?? ClassifierEvaluator.leaveOneOut(session.positiveSamples)
-            let counts = DeskZone.allCases.map { session.count(for: $0) }
-            let summary = CalibrationSummary(
-                sampleCount: session.positiveSamples.count,
-                samplesPerZone: counts,
-                leaveOneOutAccuracy: crossValidation.accuracy
-            )
-            let oldProfile = profiles.first { $0.id == recalibratingProfileID }
-            var profile = SidetapProfile(
-                id: oldProfile?.id ?? UUID(),
-                name: session.draft.name,
-                surfaceDescription: session.draft.surfaceDescription,
-                laptopPositionNote: session.draft.laptopPositionNote,
+            // Recalibrating keeps the gestures and their actions.
+            let calibrated = SidetapProfile(
                 classifier: classifier,
-                calibration: summary,
-                zones: oldProfile?.zones ?? DeskZone.allCases.map { ZoneConfiguration(zone: $0) }
+                maximumTapGap: session.maximumTapGap,
+                actions: profile?.actions ?? [:]
             )
-            if let oldProfile { profile.createdAt = oldProfile.createdAt }
-            profile.doubleTapAction = oldProfile?.doubleTapAction
-            profile.tripleTapAction = oldProfile?.tripleTapAction
-            profile.moreTapActions = oldProfile?.moreTapActions
-            // A new desk set up while location switching is on belongs to this location.
-            profile.location = oldProfile.map(\.location) ?? latestLocation.map(ProfileLocation.init)
-            guard let profileStore else { throw SidetapStorageError.unavailable("Desk profile") }
-            try profileStore.save(profile)
-            if let index = profiles.firstIndex(where: { $0.id == profile.id }) {
-                profiles[index] = profile
-            } else {
-                profiles.insert(profile, at: 0)
-            }
-            selectedProfileID = profile.id
+            guard let profileStore else { throw SidetapStorageError.unavailable("Calibration") }
+            try profileStore.save(calibrated)
+            profile = calibrated
             calibrationArmTask?.cancel()
             calibrationSession = nil
-            calibrationValidation = nil
-            guidedCaptureIssue = nil
-            recalibratingProfileID = nil
+            calibrationGuidance = nil
             section = openActions ? .actions : .live
             statusMessage = "Calibration saved • listening"
             Task {
-                do { try await reconfigureListeningAudio(to: profile.sensingStrategy) }
+                do { try await reconfigureListeningAudio(to: calibrated.sensingStrategy) }
                 catch { errorMessage = error.localizedDescription }
             }
         } catch {
@@ -489,133 +309,15 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func beginEvaluation() {
-        guard selectedProfile != nil else {
-            errorMessage = "Calibrate a desk profile before evaluating it."
-            return
-        }
-        pausedByUser = false
-        calibrationSession = nil
-        benchmarkSession = nil
-        calibrationArmTask?.cancel()
-        benchmarkArmTask?.cancel()
-        evaluationArmTask?.cancel()
-        latestEvaluation = nil
-        latestEvaluationIsPersisted = false
-        activeZoneClearTask?.cancel()
-        guidedCaptureIssue = nil
-        activeZone = nil
-        lastDecision = nil
-        evaluationSession = EvaluationSession()
-        section = .evaluate
-        statusMessage = "Accuracy test ready • move to Left Top, then arm"
-        Task {
-            do { try await prepareGuidedAudio(to: targetStrategy) }
-            catch is CancellationError { }
-            catch { errorMessage = error.localizedDescription }
-        }
-    }
-
-    func armEvaluationZone() {
-        guard var session = evaluationSession, let zone = session.currentZone else { return }
-        evaluationArmTask?.cancel()
-        session.isArmed = false
-        session.isSettling = true
-        evaluationSession = session
-        statusMessage = "Get ready • accuracy test starts in one second"
-        evaluationArmTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
-            guard !Task.isCancelled,
-                  let self,
-                  var current = self.evaluationSession,
-                  self.audio.isListening,
-                  self.audio.strategy == self.targetStrategy,
-                  current.currentZone == zone,
-                  current.isSettling else { return }
-            current.isSettling = false
-            current.isArmed = true
-            self.evaluationAcceptAfter = Date()
-            self.evaluationSession = current
-            let count = current.records.filter { $0.expectedZone == zone }.count
-            self.statusMessage = "Accuracy test armed • \(zone.displayName) • \(count + 1)/\(current.targetPerZone)"
-        }
-    }
-
-    func cancelEvaluation() {
-        evaluationArmTask?.cancel()
-        evaluationSession = nil
-        activeZone = nil
-        refreshLatestEvaluation()
-        statusMessage = "Accuracy test cancelled"
-    }
-
-    func beginApproachBenchmark() {
-        pausedByUser = false
-        calibrationArmTask?.cancel()
-        evaluationArmTask?.cancel()
-        benchmarkArmTask?.cancel()
-        calibrationSession = nil
-        evaluationSession = nil
-        benchmarkSession = BenchmarkSession()
-        guidedCaptureIssue = nil
-        section = .diagnostics
-        statusMessage = "Sensing comparison ready • move to Left Top, then arm"
-        Task {
-            do { try await prepareGuidedAudio(to: .passive) }
-            catch is CancellationError { }
-            catch { errorMessage = error.localizedDescription }
-        }
-    }
-
-    func armApproachBenchmarkZone() {
-        guard var session = benchmarkSession,
-              let strategy = session.currentStrategy,
-              let zone = session.currentZone else { return }
-        benchmarkArmTask?.cancel()
-        session.isArmed = false
-        session.isSettling = true
-        guidedCaptureIssue = nil
-        benchmarkSession = session
-        statusMessage = "Get ready • \(strategy.displayName) • \(zone.displayName)"
-        benchmarkArmTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
-            guard !Task.isCancelled,
-                  let self,
-                  var current = self.benchmarkSession,
-                  self.audio.isListening,
-                  self.audio.strategy == strategy,
-                  current.currentStrategy == strategy,
-                  current.currentZone == zone,
-                  current.isSettling else { return }
-            current.isSettling = false
-            current.isArmed = true
-            self.benchmarkAcceptAfter = Date()
-            self.benchmarkSession = current
-            self.statusMessage = "Sensing comparison armed • \(strategy.displayName) • \(zone.displayName)"
-        }
-    }
-
-    func cancelApproachBenchmark() {
-        benchmarkArmTask?.cancel()
-        benchmarkSession = nil
-        guidedCaptureIssue = nil
-        statusMessage = "Sensing comparison cancelled"
-        Task {
-            do { try await reconfigureListeningAudio(to: targetStrategy) }
-            catch { errorMessage = error.localizedDescription }
-        }
-    }
-
     func armDiagnosticCapture() {
         diagnosticCaptureArmed = true
-        statusMessage = "Diagnostic armed • tap \(diagnosticLabel.displayName)"
+        statusMessage = "Diagnostic armed • make a \(diagnosticLabel.lowercased()) sound"
     }
 
     func exportDiagnosticReport() {
         let report = DiagnosticSessionReport(
             microphone: audio.diagnostics,
             captures: diagnosticCaptures,
-            approachComparison: approachComparison,
             recordingsRetained: debugRecordingEnabled
         )
         let panel = NSSavePanel()
@@ -650,27 +352,26 @@ final class AppModel: ObservableObject {
     }
 
     @discardableResult
-    func updateAction(for gesture: TapGesture, action: ZoneActionConfiguration) -> Bool {
-        updateSelectedProfile { $0.setAction(action, for: gesture) }
+    func updateAction(for gesture: TapGesture, action: ActionConfiguration) -> Bool {
+        updateProfile { $0.setAction(action, for: gesture) }
     }
 
     func addGesture() {
-        updateSelectedProfile { $0.addGesture() }
+        updateProfile { $0.addGesture() }
     }
 
     func removeLastGesture() {
-        updateSelectedProfile { $0.removeLastGesture() }
+        updateProfile { $0.removeLastGesture() }
     }
 
     @discardableResult
-    private func updateSelectedProfile(_ change: (inout SidetapProfile) -> Void) -> Bool {
-        guard let profileIndex = profiles.firstIndex(where: { $0.id == selectedProfileID }) else { return false }
-        var updatedProfile = profiles[profileIndex]
+    private func updateProfile(_ change: (inout SidetapProfile) -> Void) -> Bool {
+        guard var updatedProfile = profile else { return false }
         change(&updatedProfile)
         do {
-            guard let profileStore else { throw SidetapStorageError.unavailable("Desk profile") }
+            guard let profileStore else { throw SidetapStorageError.unavailable("Calibration") }
             try profileStore.save(updatedProfile)
-            profiles[profileIndex] = updatedProfile
+            profile = updatedProfile
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -678,94 +379,9 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func pinSelectedProfileToCurrentLocation() {
-        guard let id = selectedProfileID else { return }
-        pinPendingProfileID = id
-        statusMessage = "Finding this location…"
-        locator.start()
-    }
-
-    func forgetSelectedProfileLocation() {
-        guard let id = selectedProfileID, setLocation(nil, forProfile: id) else { return }
-        statusMessage = "Location removed"
-        if !profiles.contains(where: { $0.location != nil }) {
-            locator.stop()
-            latestLocation = nil
-        }
-    }
-
-    func setUpDeskHere() {
-        guard guidedSection == nil else { return }
-        calibrationDraft = CalibrationDraft(name: "New Desk")
-        section = .calibrate
-        statusMessage = "New location • create a new profile for this desk"
-    }
-
-    private func handleLocation(_ location: CLLocation) {
-        latestLocation = location
-        if let id = pinPendingProfileID {
-            pinPendingProfileID = nil
-            if setLocation(ProfileLocation(location), forProfile: id),
-               let profile = profiles.first(where: { $0.id == id }) {
-                statusMessage = "\(profile.name) loads automatically at this location"
-            }
-        }
-        guard guidedSection == nil else { return }
-
-        if let desk = profiles.nearest(to: location) {
-            suggestedLocation = nil
-            showsNewLocationSuggestion = false
-            if desk.id != selectedProfileID {
-                selectProfile(desk.id)
-                statusMessage = "Switched to \(desk.name) for this location"
-            }
-        } else if suggestedLocation.map({ $0.distance(from: location) > SidetapProfile.locationRadius }) ?? true {
-            // Suggest once per place, not on every fix while the Mac stays there.
-            suggestedLocation = location
-            showsNewLocationSuggestion = true
-        }
-    }
-
-    @discardableResult
-    private func setLocation(_ location: ProfileLocation?, forProfile id: UUID) -> Bool {
-        guard let index = profiles.firstIndex(where: { $0.id == id }) else { return false }
-        var updatedProfile = profiles[index]
-        updatedProfile.location = location
-        do {
-            guard let profileStore else { throw SidetapStorageError.unavailable("Desk profile") }
-            try profileStore.save(updatedProfile)
-            profiles[index] = updatedProfile
-            return true
-        } catch {
-            errorMessage = error.localizedDescription
-            return false
-        }
-    }
-
-    func testAction(_ action: ZoneActionConfiguration) {
+    func testAction(_ action: ActionConfiguration) {
         do { try actionDispatcher.perform(action) }
         catch { errorMessage = error.localizedDescription }
-    }
-
-    func deleteSelectedProfile() {
-        guard let profile = selectedProfile else { return }
-        do {
-            guard let profileStore else { throw SidetapStorageError.unavailable("Desk profile") }
-            try profileStore.delete(profile)
-            profiles.removeAll { $0.id == profile.id }
-            selectedProfileID = profiles.first?.id
-            refreshLatestEvaluation()
-            if let nextProfile = selectedProfile {
-                calibrationDraft = draft(for: nextProfile)
-            }
-            statusMessage = profiles.isEmpty ? "Calibration needed" : "Profile deleted"
-            Task {
-                do { try await reconfigureListeningAudio(to: targetStrategy) }
-                catch { errorMessage = error.localizedDescription }
-            }
-        } catch {
-            errorMessage = error.localizedDescription
-        }
     }
 
     private func handle(_ observation: TapObservation) {
@@ -785,58 +401,16 @@ final class AppModel: ObservableObject {
             }
         }
 
-        if var benchmark = benchmarkSession {
-            handleBenchmark(observation, session: &benchmark)
-            benchmarkSession = benchmark.currentStrategy == nil ? nil : benchmark
-            return
-        }
-
         if var calibration = calibrationSession {
             handleCalibration(observation, session: &calibration)
             calibrationSession = calibration
             return
         }
 
-        if var evaluation = evaluationSession, let profile = selectedProfile, let expected = evaluation.currentZone {
-            guard evaluation.isArmed, Date() >= evaluationAcceptAfter else { return }
-            // One trial per double tap; the first tap alone records nothing.
-            guard let feature = doubleTap.add(observation.feature, at: observation.eventHostTimeSeconds) else {
-                statusMessage = "Accuracy test • tap again to complete the double tap"
-                return
-            }
-            var decision = profile.classifier.predict(feature)
-            decision.processingLatencyMilliseconds = observation.processingLatencyMilliseconds
-            evaluation.records.append(EvaluationRecord(
-                expectedZone: expected,
-                decision: decision,
-                responseLatencyMilliseconds: responseLatencyMilliseconds(for: observation),
-                capturedAt: feature.capturedAt,
-                feature: feature
-            ))
-            present(decision)
-            evaluationAcceptAfter = Date().addingTimeInterval(0.40)
-            let completedExpectedZone = evaluation.records.filter { $0.expectedZone == expected }.count == evaluation.targetPerZone
-            if completedExpectedZone {
-                evaluation.isArmed = false
-                evaluation.isSettling = false
-                activeZone = nil
-            }
-            evaluationSession = evaluation
-            if let next = evaluation.currentZone {
-                statusMessage = completedExpectedZone
-                    ? "Zone complete • move to \(next.displayName), then arm"
-                    : "Accuracy test • \(next.displayName) • \(evaluation.records.filter { $0.expectedZone == next }.count + 1)/\(evaluation.targetPerZone)"
-            } else {
-                finishEvaluation(evaluation)
-            }
-            return
-        }
-
         if section == .diagnostics {
             if diagnosticCaptureArmed {
                 let capture = DiagnosticCaptureRecord(
-                    label: diagnosticLabel.displayName,
-                    zone: diagnosticLabel.zone,
+                    label: diagnosticLabel,
                     feature: observation.feature,
                     responseLatencyMilliseconds: responseLatencyMilliseconds(for: observation)
                 )
@@ -847,8 +421,8 @@ final class AppModel: ObservableObject {
             return
         }
 
-        guard let profile = selectedProfile else {
-            statusMessage = "Tap detected • calibrate to identify its zone"
+        guard let profile else {
+            statusMessage = "Tap detected • calibration needed"
             return
         }
         if observation.feature.quality.noiseFloorRMS > SignalQuality.maximumRoomNoiseFloorRMS {
@@ -859,8 +433,6 @@ final class AppModel: ObservableObject {
             statusMessage = "Tap ignored • typing or clicking"
             return
         }
-        // Gestures count taps anywhere on the desk. The classifier only has to
-        // agree that the sound is a tap on this desk, not which zone it was in.
         var decision = profile.classifier.predict(observation.feature)
         decision.processingLatencyMilliseconds = observation.processingLatencyMilliseconds
         lastDecision = decision
@@ -868,7 +440,7 @@ final class AppModel: ObservableObject {
             statusMessage = "Rejected • \(decision.rejectionReason?.displayName ?? "low confidence")"
             return
         }
-        let count = gesture.add(at: observation.eventHostTimeSeconds)
+        let count = gesture.add(at: observation.eventHostTimeSeconds, maximumGap: profile.maximumTapGap)
         gestureTask?.cancel()
         // Only the gesture with the most taps can run at once. Any other has to
         // wait in case one more tap follows.
@@ -879,9 +451,9 @@ final class AppModel: ObservableObject {
         pendingTapCount = count
         statusMessage = TapGesture(rawValue: count).map { "\($0.displayName) • waiting in case of another tap" }
             ?? "Tap heard • tap again"
-        // The next tap can start up to maximumGap after this one, and a tap
+        // The next tap can start up to the profile's gap after this one, and a tap
         // takes about 0.25 s to be detected (measured: 213 ms at the 90th percentile).
-        let deadline = observation.eventHostTimeSeconds + TapGestureCounter.maximumGap + 0.25
+        let deadline = observation.eventHostTimeSeconds + profile.maximumTapGap + 0.25
         gestureTask = Task { [weak self] in
             let wait = deadline - ProcessInfo.processInfo.systemUptime
             if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
@@ -893,7 +465,7 @@ final class AppModel: ObservableObject {
     private func completeGesture() {
         gestureTask?.cancel()
         pendingTapCount = 0
-        guard let profile = selectedProfile, let completed = TapGesture(rawValue: gesture.finish()) else {
+        guard let profile, let completed = TapGesture(rawValue: gesture.finish()) else {
             statusMessage = "Single tap ignored"
             return
         }
@@ -913,151 +485,63 @@ final class AppModel: ObservableObject {
     private func handleCalibration(_ observation: TapObservation, session: inout CalibrationSession) {
         guard session.isArmed else { return }
         guard Date() >= calibrationAcceptAfter else { return }
-        guard observation.feature.strategy == session.draft.strategy else { return }
-        let quality = observation.feature.quality
+        guard observation.feature.strategy == session.strategy else { return }
 
-        if let zone = session.currentZone {
-            if let issue = GuidedCaptureQuality.issue(for: quality) {
-                guidedCaptureIssue = issue
-                statusMessage = issue.guidance
-                return
-            }
-            guidedCaptureIssue = nil
-            session.positiveSamples.append(LabeledTap(zone: zone, feature: observation.feature))
-            let count = session.count(for: zone)
-            calibrationAcceptAfter = Date().addingTimeInterval(0.40)
-            if let next = session.currentZone {
-                if count == session.targetPerZone {
-                    session.isArmed = false
-                    session.isSettling = true
-                    statusMessage = "Zone saved • move to \(next.displayName) • listening starts automatically"
-                    scheduleCalibrationArm(for: next, delayNanoseconds: 2_000_000_000)
-                } else {
-                    statusMessage = "\(zone.displayName) • tap \(count + 1) of \(session.targetPerZone)"
-                }
-            } else {
-                session.isArmed = false
-                session.isSettling = false
-                do {
-                    calibrationValidation = try ClassifierEvaluator.leaveOneOut(session.positiveSamples)
-                    statusMessage = "All four zones captured • save or add rejection examples"
-                } catch {
-                    calibrationValidation = nil
-                    statusMessage = "Calibration review unavailable"
-                    errorMessage = "Sidetap could not review calibration consistency. \(error.localizedDescription)"
-                }
+        if session.currentGesture != nil {
+            // Collect every tap of the attempt, and judge it once no further tap can follow.
+            session.attempt.add(observation.feature, at: observation.eventHostTimeSeconds)
+            calibrationGuidance = nil
+            let deadline = observation.eventHostTimeSeconds + CalibrationGuidance.longestGap + 0.25
+            calibrationAttemptTask?.cancel()
+            calibrationAttemptTask = Task { [weak self] in
+                let wait = deadline - ProcessInfo.processInfo.systemUptime
+                if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
+                guard !Task.isCancelled else { return }
+                self?.completeCalibrationAttempt()
             }
         } else if let label = session.negativeLabel {
             // Rejection examples are intentionally not required to resemble a
             // clean tap. Their job is to represent talking, typing, laptop
             // touches, and other sounds that should never run an action.
-            guidedCaptureIssue = nil
-            session.negativeSamples.append(LabeledTap(zone: nil, negativeLabel: label, feature: observation.feature))
+            calibrationGuidance = nil
+            session.negativeSamples.append(RejectionExample(label: label, feature: observation.feature))
             statusMessage = "\(label) examples • \(session.negativeCount(for: label)) captured"
         }
     }
 
-    private func handleBenchmark(_ observation: TapObservation, session: inout BenchmarkSession) {
-        guard session.isArmed,
-              Date() >= benchmarkAcceptAfter,
-              let strategy = session.currentStrategy,
-              let zone = session.currentZone,
-              observation.feature.strategy == strategy else { return }
-        let quality = observation.feature.quality
-        if let issue = GuidedCaptureQuality.issue(for: quality) {
-            guidedCaptureIssue = issue
-            statusMessage = "Sensing comparison • \(issue.guidance)"
-            return
-        }
-        guidedCaptureIssue = nil
-        let oldStrategy = strategy
-        session.samples.append(BenchmarkSample(
-            labeledTap: LabeledTap(zone: zone, feature: observation.feature),
-            processingLatencyMilliseconds: observation.processingLatencyMilliseconds
-        ))
-        benchmarkAcceptAfter = Date().addingTimeInterval(0.40)
-
-        guard let nextStrategy = session.currentStrategy, let nextZone = session.currentZone else {
-            do {
-                let comparison = try ApproachComparison.measure(
-                    session.samples,
-                    profileID: selectedProfile?.id
-                )
-                approachComparison = comparison
-                guard let comparisonStore else { throw SidetapStorageError.unavailable("Sensing comparison") }
-                try comparisonStore.save(comparison)
-                calibrationDraft.strategy = comparison.selectedStrategy
-                benchmarkSession = nil
-                statusMessage = "Comparison selected • \(comparison.selectedStrategy.displayName)"
-                let resumeStrategy = selectedProfile?.sensingStrategy ?? comparison.selectedStrategy
-                Task {
-                    do { try await reconfigureListeningAudio(to: resumeStrategy) }
-                    catch { errorMessage = error.localizedDescription }
-                }
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-            return
-        }
-
-        let completedZone = session.count(strategy: strategy, zone: zone) == session.targetPerZone
-        if completedZone {
-            session.isArmed = false
-            session.isSettling = false
-            statusMessage = "Set saved • move to \(nextZone.displayName), then arm \(nextStrategy.displayName)"
-        } else {
-            let nextTap = session.count(strategy: strategy, zone: zone) + 1
-            statusMessage = "Sensing comparison • \(strategy.displayName) • \(zone.displayName) • \(nextTap)/\(session.targetPerZone)"
-        }
-        if nextStrategy != oldStrategy {
-            Task {
-                do { try await reconfigureListeningAudio(to: nextStrategy) }
-                catch { errorMessage = error.localizedDescription }
+    private func completeCalibrationAttempt() {
+        guard var session = calibrationSession, session.isArmed, let gesture = session.currentGesture else { return }
+        let result = session.attempt.result(expecting: gesture)
+        session.attempt = CalibrationAttempt()
+        switch result {
+        case .failure(let retry):
+            calibrationGuidance = retry.guidance
+            statusMessage = "Not counted • try that \(gesture.displayName.lowercased()) again"
+        case .success(let calibrated):
+            calibrationGuidance = nil
+            session.gestures.append(calibrated)
+            if let next = session.currentGesture, next != gesture {
+                session.isArmed = false
+                session.isSettling = true
+                statusMessage = "\(gesture.displayName)s saved • \(next.displayName.lowercased())s are next"
+                scheduleCalibrationArm(for: next, delayNanoseconds: 2_000_000_000)
+            } else if session.currentGesture != nil {
+                statusMessage = "Listening • \(gesture.displayName) \(session.count(for: gesture) + 1) of \(session.repetitions)"
+            } else {
+                session.isArmed = false
+                session.isSettling = false
+                statusMessage = "Calibration captured • save, or add sounds to reject"
             }
         }
-    }
-
-    private func finishEvaluation(_ session: EvaluationSession) {
-        guard let profile = selectedProfile else { return }
-        let report = EvaluationReport(
-            profileID: profile.id,
-            profileName: profile.name,
-            strategy: profile.sensingStrategy,
-            startedAt: session.startedAt,
-            records: session.records,
-            notes: "Guided held-out session; \(EvaluationAcceptance.tapsPerZone) taps per zone."
-        )
-        latestEvaluation = report
-        latestEvaluationIsPersisted = false
-        evaluationSession = nil
-        do {
-            guard let evaluationStore else { throw SidetapStorageError.unavailable("Evaluation report") }
-            try evaluationStore.save(report)
-            evaluationHistory.removeAll {
-                $0.profileID == report.profileID && $0.completedAt == report.completedAt
-            }
-            evaluationHistory.append(report)
-            evaluationHistory.sort { $0.completedAt > $1.completedAt }
-            latestEvaluationIsPersisted = true
-            statusMessage = report.meetsAccuracyAndLatencyTargets
-                ? "Accuracy test passed"
-                : "Accuracy test complete • review results"
-        } catch {
-            statusMessage = "Accuracy test complete • report not saved"
-            errorMessage = "The accuracy test completed, but its JSON/CSV report was not saved. \(error.localizedDescription)"
-        }
+        calibrationSession = session
     }
 
     private var currentCaptureLabel: String {
         if let session = calibrationSession {
-            if let zone = session.currentZone { return "calibration-\(zone.shortName)" }
+            if let gesture = session.currentGesture { return "calibration-\(gesture.rawValue)-taps" }
             if let label = session.negativeLabel { return "negative-\(label)" }
         }
-        if let session = evaluationSession, let zone = session.currentZone { return "evaluation-\(zone.shortName)" }
-        if let session = benchmarkSession, let strategy = session.currentStrategy, let zone = session.currentZone {
-            return "benchmark-\(strategy.rawValue)-\(zone.shortName)"
-        }
-        return diagnosticLabel.displayName
+        return diagnosticLabel
     }
 
     private static func fileTimestamp() -> String {
@@ -1092,43 +576,15 @@ final class AppModel: ObservableObject {
         )
     }
 
-    private func refreshLatestEvaluation() {
-        latestEvaluation = EvaluationHistory.latest(
-            for: selectedProfile?.id,
-            in: evaluationHistory
-        )
-        latestEvaluationIsPersisted = latestEvaluation != nil
-    }
-
     private func disarmAllCaptureIntents() {
         calibrationArmTask?.cancel()
-        evaluationArmTask?.cancel()
-        benchmarkArmTask?.cancel()
+        calibrationAttemptTask?.cancel()
+        calibrationSession?.attempt = CalibrationAttempt()
         calibrationSession?.isArmed = false
         calibrationSession?.isSettling = false
         calibrationSession?.negativeLabel = nil
-        evaluationSession?.isArmed = false
-        evaluationSession?.isSettling = false
-        benchmarkSession?.isArmed = false
-        benchmarkSession?.isSettling = false
         diagnosticCaptureArmed = false
-        guidedCaptureIssue = nil
-    }
-
-    private func present(_ decision: ClassificationDecision) {
-        activeZoneClearTask?.cancel()
-        lastDecision = decision
-        activeZone = decision.zone
-        guard let zone = decision.zone else { return }
-        activeZoneClearTask = Task { [weak self] in
-            do {
-                try await Task.sleep(nanoseconds: 800_000_000)
-            } catch {
-                return
-            }
-            guard !Task.isCancelled, let self, self.activeZone == zone else { return }
-            self.activeZone = nil
-        }
+        calibrationGuidance = nil
     }
 
     private func reconfigureListeningAudio(to strategy: SensingStrategy) async throws {
@@ -1142,55 +598,6 @@ final class AppModel: ObservableObject {
             try await audio.reconfigure(strategy: strategy)
         } else {
             try await audio.start(strategy: strategy)
-        }
-    }
-
-    private func draft(for profile: SidetapProfile) -> CalibrationDraft {
-        CalibrationDraft(
-            name: profile.name,
-            surfaceDescription: profile.surfaceDescription,
-            laptopPositionNote: profile.laptopPositionNote,
-            strategy: applicableApproachComparison?.selectedStrategy ?? profile.sensingStrategy
-        )
-    }
-}
-
-/// Delivers location fixes precise enough to tell desks apart.
-final class DeskLocator: NSObject, CLLocationManagerDelegate {
-    var onUpdate: ((CLLocation) -> Void)?
-    var onDenied: (() -> Void)?
-    private let manager = CLLocationManager()
-
-    override init() {
-        super.init()
-        manager.delegate = self
-        manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
-        manager.distanceFilter = 100
-    }
-
-    /// Restarting always delivers a fresh fix, even if the Mac hasn't moved.
-    func start() {
-        manager.requestWhenInUseAuthorization()
-        manager.stopUpdatingLocation()
-        manager.startUpdatingLocation()
-    }
-
-    func stop() {
-        manager.stopUpdatingLocation()
-    }
-
-    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        // A fix coarser than the switching radius, such as one from an IP
-        // address, can't tell desks apart.
-        guard let location = locations.last,
-              location.horizontalAccuracy >= 0,
-              location.horizontalAccuracy <= SidetapProfile.locationRadius else { return }
-        onUpdate?(location)
-    }
-
-    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        if manager.authorizationStatus == .denied || manager.authorizationStatus == .restricted {
-            onDenied?()
         }
     }
 }

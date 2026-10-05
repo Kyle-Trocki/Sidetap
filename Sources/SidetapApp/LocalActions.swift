@@ -39,7 +39,7 @@ final class LocalActionDispatcher {
     private var runningProcesses: [UUID: Process] = [:]
     var onAsyncError: ((Error) -> Void)?
 
-    func perform(_ action: ZoneActionConfiguration) throws {
+    func perform(_ action: ActionConfiguration) throws {
         guard let command = LocalActionPlanner.command(for: action) else { return }
         switch command {
         case .playSound(let name):

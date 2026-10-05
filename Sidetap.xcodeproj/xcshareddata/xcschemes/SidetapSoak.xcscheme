@@ -15,7 +15,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "05EF2198DDEBF8D87DCECB3C"
+               BlueprintIdentifier = "6379002A99521221537E5952"
                BuildableName = "SidetapSoak"
                BlueprintName = "SidetapSoak"
                ReferencedContainer = "container:Sidetap.xcodeproj">
@@ -32,7 +32,7 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "05EF2198DDEBF8D87DCECB3C"
+            BlueprintIdentifier = "6379002A99521221537E5952"
             BuildableName = "SidetapSoak"
             BlueprintName = "SidetapSoak"
             ReferencedContainer = "container:Sidetap.xcodeproj">
@@ -55,7 +55,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "05EF2198DDEBF8D87DCECB3C"
+            BlueprintIdentifier = "6379002A99521221537E5952"
             BuildableName = "SidetapSoak"
             BlueprintName = "SidetapSoak"
             ReferencedContainer = "container:Sidetap.xcodeproj">
@@ -74,7 +74,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "05EF2198DDEBF8D87DCECB3C"
+            BlueprintIdentifier = "6379002A99521221537E5952"
             BuildableName = "SidetapSoak"
             BlueprintName = "SidetapSoak"
             ReferencedContainer = "container:Sidetap.xcodeproj">

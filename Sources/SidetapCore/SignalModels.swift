@@ -77,47 +77,60 @@ public struct TapFeatureVector: Codable, Equatable, Sendable {
     }
 }
 
-extension TapFeatureVector {
-    /// One vector for a double tap: the mean of both taps' values, with the
-    /// weaker tap's signal quality so a marginal tap is still rejected.
-    public func averaged(with other: TapFeatureVector) -> TapFeatureVector {
-        TapFeatureVector(
-            strategy: other.strategy,
-            names: other.names,
-            values: zip(values, other.values).map { ($0 + $1) / 2 },
-            quality: quality.signalToNoiseDB <= other.quality.signalToNoiseDB ? quality : other.quality,
-            capturedAt: other.capturedAt
-        )
-    }
-}
+public enum SensingStrategy: String, CaseIterable, Codable, Sendable, Identifiable {
+    case passive
+    case active
+    case hybrid
 
-/// Pairs taps into double taps. A lone tap produces nothing; two taps
-/// 0.08 to 0.6 s apart produce one combined feature vector.
-public struct DoubleTapRecognizer: Sendable {
-    public static let gap = 0.08...0.6
+    public var id: String { rawValue }
 
-    private var first: TapFeatureVector?
-    private var firstTime = 0.0
-
-    public init() {}
-
-    /// Returns the combined feature when `feature` completes a double tap.
-    public mutating func add(_ feature: TapFeatureVector, at time: Double) -> TapFeatureVector? {
-        if let first, Self.gap.contains(time - firstTime),
-           first.strategy == feature.strategy, first.names == feature.names {
-            self.first = nil
-            return first.averaged(with: feature)
+    public var displayName: String {
+        switch self {
+        case .passive: return "Passive tap acoustics"
+        case .active: return "Active acoustic probe"
+        case .hybrid: return "Hybrid"
         }
-        first = feature
-        firstTime = time
-        return nil
+    }
+
+    public var detail: String {
+        switch self {
+        case .passive:
+            return "Uses only the sound and vibration produced by a tap."
+        case .active:
+            return "Measures how a quiet repeating chirp changes around a tap."
+        case .hybrid:
+            return "Combines tap acoustics with the chirp response."
+        }
     }
 }
 
-/// Counts taps into a gesture. Taps no more than `maximumGap` apart belong to
-/// the same gesture; a longer pause starts a new one.
+public enum RejectionReason: String, Codable, Sendable, Equatable {
+    case weakSignal
+    case lowSignalToNoise
+    case clippedSignal
+    case outOfDistribution
+    case resemblesNegativeExample
+    case schemaMismatch
+    case paused
+
+    public var displayName: String {
+        switch self {
+        case .weakSignal: return "Signal too weak"
+        case .lowSignalToNoise: return "Background noise too high"
+        case .clippedSignal: return "Signal clipped"
+        case .outOfDistribution: return "Unlike calibrated taps"
+        case .resemblesNegativeExample: return "Recognized as a sound to reject"
+        case .schemaMismatch: return "Profile is incompatible"
+        case .paused: return "Listening paused"
+        }
+    }
+}
+
+/// Counts taps into a gesture. Taps no more than the maximum gap apart belong
+/// to the same gesture; a longer pause starts a new one.
 public struct TapGestureCounter: Sendable {
-    /// Measured on real double and triple taps: 0.19 to 0.34 s between taps.
+    /// The default maximum gap, in seconds. Measured on real double and triple
+    /// taps: 0.19 to 0.34 s between taps. A profile can learn a longer one.
     public static let maximumGap = 0.45
 
     private var count = 0
@@ -126,8 +139,8 @@ public struct TapGestureCounter: Sendable {
     public init() {}
 
     /// Registers a tap and returns how many taps the gesture has so far.
-    public mutating func add(at time: Double) -> Int {
-        count = time - lastTap <= Self.maximumGap ? count + 1 : 1
+    public mutating func add(at time: Double, maximumGap: Double = Self.maximumGap) -> Int {
+        count = time - lastTap <= maximumGap ? count + 1 : 1
         lastTap = time
         return count
     }
@@ -139,25 +152,6 @@ public struct TapGestureCounter: Sendable {
             lastTap = -.infinity
         }
         return count
-    }
-}
-
-public struct LabeledTap: Codable, Equatable, Sendable, Identifiable {
-    public var id: UUID
-    public var zone: DeskZone?
-    public var negativeLabel: String?
-    public var feature: TapFeatureVector
-
-    public init(
-        id: UUID = UUID(),
-        zone: DeskZone?,
-        negativeLabel: String? = nil,
-        feature: TapFeatureVector
-    ) {
-        self.id = id
-        self.zone = zone
-        self.negativeLabel = negativeLabel
-        self.feature = feature
     }
 }
 

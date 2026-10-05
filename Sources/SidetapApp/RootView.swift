@@ -32,12 +32,6 @@ struct RootView: View {
                 .safeAreaInset(edge: .bottom) {
                     statusBar
                 }
-                .alert("You’re Away from Your Saved Desks", isPresented: $model.showsNewLocationSuggestion) {
-                    Button("Set Up Desk") { model.setUpDeskHere() }
-                    Button("Not Now", role: .cancel) {}
-                } message: {
-                    Text("Sidetap switches to a desk only within \(Int(SidetapProfile.locationRadius)) m of where you set it up. To use Sidetap here, set up this desk. Until then, \(model.selectedProfile?.name ?? "the current desk") stays selected.")
-                }
         }
         .navigationSplitViewStyle(.balanced)
         .alert("Sidetap", isPresented: Binding(
@@ -65,53 +59,19 @@ struct RootView: View {
             CalibrationView(model: model)
         case .diagnostics:
             DiagnosticsView(model: model)
-        case .evaluate:
-            EvaluationView(model: model)
         case .actions:
-            ZoneActionsView(model: model)
+            ActionsView(model: model)
         }
     }
 
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
-            if !model.profiles.isEmpty {
-                Menu {
-                    ForEach(model.profiles) { profile in
-                        Button {
-                            model.selectProfile(profile.id)
-                        } label: {
-                            if profile.id == model.selectedProfileID {
-                                Label(profile.name, systemImage: "checkmark")
-                            } else {
-                                Text(profile.name)
-                            }
-                        }
-                    }
-                    if let profile = model.selectedProfile {
-                        Divider()
-                        if profile.location == nil {
-                            Button("Use This Location for “\(profile.name)”") {
-                                model.pinSelectedProfileToCurrentLocation()
-                            }
-                        } else {
-                            Button("Forget Location for “\(profile.name)”") {
-                                model.forgetSelectedProfileLocation()
-                            }
-                        }
-                    }
-                } label: {
-                    Label(model.selectedProfile?.name ?? "Profile", systemImage: "macbook")
-                }
-                .help("Choose a desk profile")
-                .disabled(model.guidedSection != nil)
-            }
-
-            if model.selectedProfile == nil && model.guidedSection == nil {
+            if model.profile == nil && model.guidedSection == nil {
                 Button(action: model.openSetup) {
-                    Label("Set Up Desk", systemImage: "scope")
+                    Label("Set Up", systemImage: "scope")
                 }
-                .help("Calibrate the four zones before listening")
+                .help("Calibrate your taps before listening")
             } else {
                 Button(action: model.togglePause) {
                     Label(
@@ -145,7 +105,7 @@ struct RootView: View {
     }
 
     private var needsInitialSetup: Bool {
-        model.selectedProfile == nil && model.calibrationSession == nil
+        model.profile == nil && model.calibrationSession == nil
     }
 
     private var microphoneSymbol: String {
@@ -159,7 +119,7 @@ struct RootView: View {
     }
 
     private var microphoneDetail: String {
-        if needsInitialSetup { return "Calibrate four zones first" }
+        if needsInitialSetup { return "Calibrate your taps first" }
         return model.audio.isListening ? "Processed on this Mac" : "No audio capture"
     }
 

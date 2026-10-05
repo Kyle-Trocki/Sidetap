@@ -21,8 +21,8 @@ struct SidetapApp: App {
         .defaultSize(width: 1_180, height: 760)
         .commands {
             CommandMenu("Sidetap") {
-                if model.selectedProfile == nil && model.guidedSection == nil {
-                    Button("Set Up Desk") {
+                if model.profile == nil && model.guidedSection == nil {
+                    Button("Set Up") {
                         model.openSetup()
                     }
                 } else {
@@ -36,7 +36,7 @@ struct SidetapApp: App {
                     model.prepareRecalibration()
                 }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
-                .disabled(model.selectedProfile == nil || model.guidedSection != nil)
+                .disabled(model.profile == nil || model.guidedSection != nil)
             }
         }
     }

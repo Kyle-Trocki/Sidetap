@@ -2,156 +2,79 @@ import XCTest
 @testable import SidetapCore
 
 final class ClassifierTests: XCTestCase {
-    func testClassifierIdentifiesAllFourSyntheticZones() throws {
-        let classifier = try TrainedTapClassifier.train(positiveExamples: trainingSamples())
-        let linearModel = try XCTUnwrap(classifier.linearZoneModel)
-        XCTAssertEqual(linearModel.coefficients.count, DeskZone.allCases.count)
-        XCTAssertTrue(linearModel.coefficients.allSatisfy {
-            $0.count == classifier.featureNames.count + 1 && $0.allSatisfy(\.isFinite)
-        })
-        for zone in DeskZone.allCases {
-            let decision = classifier.predict(feature(zone: zone, jitter: 0.015))
-            XCTAssertEqual(decision.zone, zone)
-            XCTAssertNil(decision.rejectionReason)
-            XCTAssertGreaterThan(decision.confidence, 0.4)
-        }
+    func testClassifierAcceptsTapsLikeTheCalibratedOnes() throws {
+        let classifier = try TrainedTapClassifier.train(gestures: calibratedGestures())
+
+        let decision = classifier.predict(tap(jitter: 0.015))
+
+        XCTAssertTrue(decision.isTap)
+        XCTAssertNil(decision.rejectionReason)
+        XCTAssertGreaterThan(decision.confidence, 0.4)
     }
 
     func testClassifierRejectsWeakAndOutOfDistributionSignals() throws {
-        let classifier = try TrainedTapClassifier.train(positiveExamples: trainingSamples())
-        var weak = feature(zone: .leftBottom)
+        let classifier = try TrainedTapClassifier.train(gestures: calibratedGestures())
+        var weak = tap()
         weak.quality.peakAmplitude = 0.001
         XCTAssertEqual(classifier.predict(weak).rejectionReason, .weakSignal)
 
-        var alien = feature(zone: .leftBottom)
+        var alien = tap()
         alien.values = [100, -100, 80, -70]
         XCTAssertEqual(classifier.predict(alien).rejectionReason, .outOfDistribution)
+        XCTAssertFalse(classifier.predict(alien).isTap)
     }
 
     func testClassifierRejectsClippedAndNoisySignalsBeforeDistanceMatching() throws {
-        let classifier = try TrainedTapClassifier.train(positiveExamples: trainingSamples())
+        let classifier = try TrainedTapClassifier.train(gestures: calibratedGestures())
 
-        var clipped = feature(zone: .rightTop)
+        var clipped = tap()
         clipped.quality.clippingFraction = SignalQuality.maximumReliableClippingFraction + 0.01
         clipped.quality.peakAmplitude = 0.001
         XCTAssertEqual(classifier.predict(clipped).rejectionReason, .clippedSignal)
 
-        var noisy = feature(zone: .rightTop)
+        var noisy = tap()
         noisy.quality.signalToNoiseDB = SignalQuality.minimumClassificationSignalToNoiseDB - 0.1
         XCTAssertEqual(classifier.predict(noisy).rejectionReason, .lowSignalToNoise)
     }
 
     func testSchemaMismatchIsRejected() throws {
-        let classifier = try TrainedTapClassifier.train(positiveExamples: trainingSamples())
-        var mismatched = feature(zone: .leftBottom)
+        let classifier = try TrainedTapClassifier.train(gestures: calibratedGestures())
+        var mismatched = tap()
         mismatched.names[0] = "other"
         XCTAssertEqual(classifier.predict(mismatched).rejectionReason, .schemaMismatch)
     }
 
     func testClassifierRejectsCalibratedNegativeExample() throws {
-        let typing = feature(zone: .leftTop, jitter: 0.042)
-        let classifier = try TrainedTapClassifier.train(
-            positiveExamples: trainingSamples(),
-            negativeExamples: [LabeledTap(
-                zone: nil,
-                negativeLabel: "Typing",
-                feature: typing
-            )]
-        )
+        let typing = tap(jitter: 0.042)
+        // Without the negative example, the same sound passes as a tap.
+        XCTAssertTrue(try TrainedTapClassifier.train(gestures: calibratedGestures()).predict(typing).isTap)
 
-        let decision = classifier.predict(typing)
+        let classifier = try TrainedTapClassifier.train(gestures: calibratedGestures(), negativeExamples: [typing])
 
-        XCTAssertNil(decision.zone)
-        XCTAssertEqual(decision.rejectionReason, .resemblesNegativeExample)
+        XCTAssertEqual(classifier.predict(typing).rejectionReason, .resemblesNegativeExample)
     }
 
-    func testClassifierRejectsNovelEventShapeEvenWhenZoneFeaturesMatch() throws {
-        let samples = trainingSamples().map { sample -> LabeledTap in
-            var updated = sample
-            updated.feature.names.append("sustained_speech_shape")
-            updated.feature.values.append(Double((sample.id.hashValue & 3) - 1) * 0.002)
-            return updated
+    func testNoveltyThresholdMeasuresVariationBetweenGesturesNotWithinOne() throws {
+        // Both taps of each double tap are identical, and the gestures differ.
+        let gestures = [0.0, 1, 2, 3].map { value in
+            [oneDimensionFeature(value), oneDimensionFeature(value)]
         }
-        var classifier = try TrainedTapClassifier.train(positiveExamples: samples)
-        classifier.outlierThreshold = 1_000_000
-        classifier.featureWeights[classifier.featureWeights.count - 1] = 1e-9
+        let classifier = try TrainedTapClassifier.train(gestures: gestures)
 
-        var speechLike = samples.first { $0.zone == .rightBottom }!.feature
-        speechLike.values[speechLike.values.count - 1] = 2.0
-
-        XCTAssertEqual(classifier.predict(speechLike).rejectionReason, .outOfDistribution)
+        // Measured within a gesture, taps would look identical and the threshold
+        // would fall to its floor, which rejects a tap this far from the others.
+        XCTAssertGreaterThan(classifier.noveltyThreshold, 0.95)
+        XCTAssertTrue(classifier.predict(oneDimensionFeature(5)).isTap)
+        XCTAssertEqual(classifier.predict(oneDimensionFeature(9)).rejectionReason, .outOfDistribution)
     }
 
-    func testClassifierDecodesProfilesCreatedBeforeHybridModelFields() throws {
-        let classifier = try TrainedTapClassifier.train(positiveExamples: trainingSamples())
-        let encoded = try JSONEncoder().encode(classifier)
-        var object = try XCTUnwrap(
-            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
-        )
-        object.removeValue(forKey: "positiveNoveltyThreshold")
-        object.removeValue(forKey: "linearZoneModel")
-        let legacyData = try JSONSerialization.data(withJSONObject: object)
-
-        let decoded = try JSONDecoder().decode(TrainedTapClassifier.self, from: legacyData)
-
-        XCTAssertNil(decoded.positiveNoveltyThreshold)
-        XCTAssertNil(decoded.linearZoneModel)
-        XCTAssertEqual(decoded.predict(feature(zone: .leftTop)).zone, .leftTop)
-    }
-
-    func testClassifierRejectsIndistinguishableZonesAsAmbiguous() throws {
-        let collided = trainingSamples().map { sample -> LabeledTap in
-            guard sample.zone == .leftBottom else { return sample }
-            var replacement = sample
-            let originalJitter = -sample.feature.values[1]
-            replacement.feature = feature(zone: .leftTop, jitter: originalJitter)
-            return replacement
+    func testTrainingNeedsTwoGesturesWithOneFeatureSchema() {
+        XCTAssertThrowsError(try TrainedTapClassifier.train(gestures: [[tap(), tap()]])) { error in
+            XCTAssertEqual(error as? ClassifierTrainingError, .notEnoughSamples)
         }
-        let classifier = try TrainedTapClassifier.train(positiveExamples: collided)
-
-        let decision = classifier.predict(feature(zone: .leftTop, jitter: 0))
-
-        XCTAssertNil(decision.zone)
-        XCTAssertEqual(decision.rejectionReason, .ambiguousZone)
-    }
-
-    func testClassifierAcceptsCloseButUsableDecisionAtRelaxedSeparation() throws {
-        let leftRearValues = [-100.0, -100.0, -0.1, -0.1, -0.1, 100.0, 100.0, 100.0]
-        let leftFrontValues = [-100.0, -100.0, -0.1055, -0.1055, -0.1055, 100.0, 100.0, 100.0]
-        let samples = leftRearValues.map {
-            LabeledTap(zone: .leftTop, feature: oneDimensionFeature($0))
-        } + leftFrontValues.map {
-            LabeledTap(zone: .leftBottom, feature: oneDimensionFeature($0))
+        XCTAssertThrowsError(try TrainedTapClassifier.train(gestures: [[tap()], [oneDimensionFeature(1)]])) { error in
+            XCTAssertEqual(error as? ClassifierTrainingError, .inconsistentFeatures)
         }
-        let classifier = try TrainedTapClassifier.train(positiveExamples: samples)
-
-        let decision = classifier.predict(oneDimensionFeature(0))
-        let ranked = decision.zoneDistances.filter(\.isFinite).sorted()
-        let relativeSeparation = (ranked[1] - ranked[0]) / ranked[1]
-
-        XCTAssertEqual(decision.zone, .leftTop)
-        XCTAssertNil(decision.rejectionReason)
-        XCTAssertGreaterThanOrEqual(relativeSeparation, ClassifierDefaults.minimumRelativeSeparation)
-        XCTAssertLessThan(relativeSeparation, 0.055)
-        XCTAssertGreaterThanOrEqual(decision.confidence, ClassifierDefaults.minimumConfidence)
-    }
-
-    func testDoubleTapRecognizerPairsTapsWithinTheGap() {
-        var recognizer = DoubleTapRecognizer()
-
-        // A lone tap produces nothing, and a second tap 0.2 s later completes the pair.
-        XCTAssertNil(recognizer.add(oneDimensionFeature(1), at: 10.0))
-        XCTAssertEqual(recognizer.add(oneDimensionFeature(3), at: 10.2)?.values, [2])
-
-        // The pair was consumed, so a third tap starts a new pair.
-        XCTAssertNil(recognizer.add(oneDimensionFeature(5), at: 10.4))
-        XCTAssertEqual(recognizer.add(oneDimensionFeature(7), at: 10.7)?.values, [6])
-
-        // Taps too far apart, or too close to be two taps, don't pair.
-        XCTAssertNil(recognizer.add(oneDimensionFeature(1), at: 20.0))
-        XCTAssertNil(recognizer.add(oneDimensionFeature(1), at: 21.0))
-        XCTAssertNil(recognizer.add(oneDimensionFeature(1), at: 21.05))
-        XCTAssertNotNil(recognizer.add(oneDimensionFeature(1), at: 21.3))
     }
 
     func testTapGestureCounterGroupsTapsByGap() {
@@ -169,61 +92,47 @@ final class ClassifierTests: XCTestCase {
         XCTAssertEqual(counter.add(at: 21.0), 1)
         XCTAssertEqual(counter.finish(), 1)
         XCTAssertEqual(counter.add(at: 21.2), 1)
+
+        // A profile that learned a slower pace keeps the same pause in one gesture.
+        XCTAssertEqual(counter.add(at: 21.9, maximumGap: 0.8), 2)
+
         XCTAssertEqual(TapGesture(rawValue: 2), .double)
         XCTAssertNil(TapGesture(rawValue: 1))
         XCTAssertEqual(TapGesture(rawValue: 5)?.displayName, "5 taps")
     }
 
-    func testLeaveOneOutEvaluationUsesEverySample() throws {
-        let samples = trainingSamples()
-        let result = try ClassifierEvaluator.leaveOneOut(samples, minimumConfidence: 0.2)
-        XCTAssertEqual(result.predictions.count, samples.count)
-        XCTAssertGreaterThan(result.accuracy, 0.95)
-        XCTAssertEqual(result.perZoneAccuracy.filter { $0.total > 0 }.count, DeskZone.allCases.count)
-    }
-
-    private func trainingSamples() -> [LabeledTap] {
-        DeskZone.allCases.flatMap { zone in
-            (0..<8).map { sample in
-                LabeledTap(zone: zone, feature: feature(zone: zone, jitter: Double(sample - 3) * 0.012))
+    /// Eight double taps and eight triple taps, as calibration collects them.
+    private func calibratedGestures() -> [[TapFeatureVector]] {
+        CalibrationGuidance.gestures.flatMap { gesture in
+            (0..<CalibrationGuidance.repetitionsPerGesture).map { repetition in
+                (0..<gesture.rawValue).map { index in
+                    tap(jitter: Double(repetition * 3 + index - 12) * 0.004)
+                }
             }
         }
     }
 
-    private func feature(zone: DeskZone, jitter: Double = 0) -> TapFeatureVector {
+    private func tap(jitter: Double = 0) -> TapFeatureVector {
         TapFeatureVector(
             strategy: .passive,
-            names: ["row", "column", "diagonal", "texture"],
-            values: [
-                Double(zone.row) * 2.2 + jitter,
-                Double(zone.column) * 2.0 - jitter,
-                Double(zone.row + zone.column) * 0.8 + jitter * 0.5,
-                Double(zone.rawValue) * 0.35 - jitter * 0.2
-            ],
-            quality: SignalQuality(
-                signalToNoiseDB: 28,
-                peakAmplitude: 0.12,
-                rmsAmplitude: 0.025,
-                clippingFraction: 0,
-                noiseFloorRMS: 0.0004,
-                durationMilliseconds: 90
-            )
+            names: ["attack", "ring", "brightness", "texture"],
+            values: [2.2 + jitter, 2.0 - jitter, 1.6 + jitter * 0.5, 1.05 - jitter * 0.2],
+            quality: cleanQuality
         )
     }
 
     private func oneDimensionFeature(_ value: Double) -> TapFeatureVector {
-        TapFeatureVector(
-            strategy: .passive,
-            names: ["signature"],
-            values: [value],
-            quality: SignalQuality(
-                signalToNoiseDB: 28,
-                peakAmplitude: 0.12,
-                rmsAmplitude: 0.025,
-                clippingFraction: 0,
-                noiseFloorRMS: 0.0004,
-                durationMilliseconds: 90
-            )
+        TapFeatureVector(strategy: .passive, names: ["signature"], values: [value], quality: cleanQuality)
+    }
+
+    private var cleanQuality: SignalQuality {
+        SignalQuality(
+            signalToNoiseDB: 28,
+            peakAmplitude: 0.12,
+            rmsAmplitude: 0.025,
+            clippingFraction: 0,
+            noiseFloorRMS: 0.0004,
+            durationMilliseconds: 90
         )
     }
 }

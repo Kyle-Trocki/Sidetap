@@ -15,7 +15,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "2A0913028CBDE5ED39D59063"
+               BlueprintIdentifier = "188FCFD4635D9564449D87BD"
                BuildableName = "SidetapRouteCheck"
                BlueprintName = "SidetapRouteCheck"
                ReferencedContainer = "container:Sidetap.xcodeproj">
@@ -32,7 +32,7 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "2A0913028CBDE5ED39D59063"
+            BlueprintIdentifier = "188FCFD4635D9564449D87BD"
             BuildableName = "SidetapRouteCheck"
             BlueprintName = "SidetapRouteCheck"
             ReferencedContainer = "container:Sidetap.xcodeproj">
@@ -55,7 +55,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "2A0913028CBDE5ED39D59063"
+            BlueprintIdentifier = "188FCFD4635D9564449D87BD"
             BuildableName = "SidetapRouteCheck"
             BlueprintName = "SidetapRouteCheck"
             ReferencedContainer = "container:Sidetap.xcodeproj">
@@ -74,7 +74,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "2A0913028CBDE5ED39D59063"
+            BlueprintIdentifier = "188FCFD4635D9564449D87BD"
             BuildableName = "SidetapRouteCheck"
             BlueprintName = "SidetapRouteCheck"
             ReferencedContainer = "container:Sidetap.xcodeproj">

@@ -15,7 +15,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "9A0864AD575062AF8919E457"
+               BlueprintIdentifier = "369720553A4CBFCC347586C4"
                BuildableName = "Sidetap.app"
                BlueprintName = "Sidetap"
                ReferencedContainer = "container:Sidetap.xcodeproj">
@@ -29,7 +29,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "1F9C3C592CD8E0DBC05B2A8E"
+               BlueprintIdentifier = "A67CBB55C55724E1DE4F78BF"
                BuildableName = "SidetapCore.framework"
                BlueprintName = "SidetapCore"
                ReferencedContainer = "container:Sidetap.xcodeproj">
@@ -46,7 +46,7 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "9A0864AD575062AF8919E457"
+            BlueprintIdentifier = "369720553A4CBFCC347586C4"
             BuildableName = "Sidetap.app"
             BlueprintName = "Sidetap"
             ReferencedContainer = "container:Sidetap.xcodeproj">
@@ -58,7 +58,7 @@
             parallelizable = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "F9C864127BCDDE6703522B72"
+               BlueprintIdentifier = "FBF0E737541EDF02BD09DC64"
                BuildableName = "SidetapCoreTests.xctest"
                BlueprintName = "SidetapCoreTests"
                ReferencedContainer = "container:Sidetap.xcodeproj">
@@ -69,7 +69,7 @@
             parallelizable = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "9F16F8CF8BEC21D76AE06244"
+               BlueprintIdentifier = "C1B2005C5398D3A17A3C1675"
                BuildableName = "SidetapAppTests.xctest"
                BlueprintName = "SidetapAppTests"
                ReferencedContainer = "container:Sidetap.xcodeproj">
@@ -93,7 +93,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "9A0864AD575062AF8919E457"
+            BlueprintIdentifier = "369720553A4CBFCC347586C4"
             BuildableName = "Sidetap.app"
             BlueprintName = "Sidetap"
             ReferencedContainer = "container:Sidetap.xcodeproj">
@@ -112,7 +112,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "9A0864AD575062AF8919E457"
+            BlueprintIdentifier = "369720553A4CBFCC347586C4"
             BuildableName = "Sidetap.app"
             BlueprintName = "Sidetap"
             ReferencedContainer = "container:Sidetap.xcodeproj">

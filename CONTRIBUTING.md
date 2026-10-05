@@ -2,7 +2,7 @@
 
 Sidetap is a research prototype, so the easiest contributions to review are ones
 that keep the DSP test suite green and respect the design: actions run on
-gestures of two or more taps, and calibration uses four zones.
+gestures of two or more taps, and calibration learns from double and triple taps.
 
 ## Setup
 
@@ -124,37 +124,20 @@ DYLD_FRAMEWORK_PATH=/tmp/SidetapRouteDerived/Build/Products/Debug \
   /tmp/SidetapRouteDerived/Build/Products/Debug/SidetapRouteCheck
 ```
 
-## Offline replay
-
-Retain evaluation feature vectors by running a new Zone Accuracy Test in the app,
-then replay its saved JSON against a freshly trained classifier:
-
-```sh
-swift run SidetapReplay \
-  --profile path/to/profile.json \
-  --evaluation path/to/evaluation.json
-```
-
-Add `--json` for machine-readable output. Reports created before feature
-retention show reduced coverage, and their missing attempts remain incorrect in
-the replay denominator. For future WAV replay investigations, enable **Retain
-90 ms debug recordings** before the Zone Accuracy Test and preserve the entire
-`Sidetap/DebugCaptures` directory alongside the profile and evaluation JSON.
-
 ## Where things live
 
 - `Sources/SidetapCore` — the detection engine: streaming detector, impact gate,
-  FFT and feature extraction, classifier, persistence models, diagnostics, and
-  evaluation reporting. No SwiftUI dependency. Covered by `Tests/SidetapCoreTests`.
+  FFT and feature extraction, classifier, calibration session, persistence
+  models, and diagnostics. No SwiftUI dependency. Covered by `Tests/SidetapCoreTests`.
 - `Sources/SidetapApp` — audio capture, app state, local action dispatch, and the
   SwiftUI interface.
-- `Sources/SidetapSoak`, `Sources/SidetapReplay`, and `Sources/SidetapRouteCheck` —
-  non-GUI verification tools.
+- `Sources/SidetapSoak` and `Sources/SidetapRouteCheck` — non-GUI verification
+  tools.
 
 ## Notes for pull requests
 
 - Keep changes small, and run the unit suite before opening a PR.
-- The four-zone calibration topology is intentional. Six- and nine-zone layouts were tried
-  and abandoned, so PRs should not reopen that decision.
+- Sidetap has no zones. Nine-, six-, and four-zone layouts were tried and
+  abandoned in favor of counting taps, so PRs should not reopen that decision.
 - DSP changes should preserve the behavior pinned by `Tests/SidetapCoreTests`
   unless the PR is explicitly about changing that behavior.

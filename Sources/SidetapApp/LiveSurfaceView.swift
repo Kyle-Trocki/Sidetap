@@ -5,7 +5,7 @@ struct LiveSurfaceView: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
-        if model.selectedProfile == nil {
+        if model.profile == nil {
             setupPrompt
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(36)
@@ -40,12 +40,12 @@ struct LiveSurfaceView: View {
             Text(gestureTitle)
                 .font(.largeTitle.weight(.semibold))
             VStack(spacing: 10) {
-                ForEach(model.selectedProfile?.gestures ?? []) { gesture in
+                ForEach(model.profile?.gestures ?? []) { gesture in
                     HStack {
                         Text(gesture.displayName)
                             .fontWeight(model.lastGesture == gesture ? .semibold : .regular)
                         Spacer()
-                        Text(model.selectedProfile?.action(for: gesture).kind.displayName ?? "")
+                        Text(model.profile?.action(for: gesture).kind.displayName ?? "")
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -69,9 +69,9 @@ struct LiveSurfaceView: View {
             Image(systemName: "scope")
                 .font(.system(size: 38, weight: .light))
                 .foregroundStyle(.secondary)
-            Text("Set up the desk around your MacBook")
+            Text("Teach Sidetap your taps")
                 .font(.title2.weight(.semibold))
-            Text("Taps cannot be assigned until Sidetap learns this desk. You will tap ten times across each of four broad zones: rear and front on both sides of the MacBook.")
+            Text("Sidetap has to learn how your taps sound before it can run actions. You double-tap \(CalibrationGuidance.repetitionsPerGesture) times, and then triple-tap \(CalibrationGuidance.repetitionsPerGesture) times.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -79,7 +79,7 @@ struct LiveSurfaceView: View {
             Text("Microphone access is requested when calibration begins.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
-            Button("Set Up Four Zones") {
+            Button("Set Up Taps") {
                 model.openSetup()
             }
             .sidetapPrimaryButton()
@@ -131,7 +131,7 @@ struct LiveSurfaceView: View {
         if let decision = model.lastDecision, !decision.isTap, let reason = decision.rejectionReason {
             return reason.displayName
         }
-        return model.selectedProfile?.name ?? ""
+        return model.lastDecision == nil ? "" : "Matches your calibrated taps"
     }
 
     private var lastResultTitle: String {

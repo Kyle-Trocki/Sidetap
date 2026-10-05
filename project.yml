@@ -41,8 +41,6 @@ targets:
         LSApplicationCategoryType: public.app-category.utilities
         LSMultipleInstancesProhibited: true
         NSMicrophoneUsageDescription: Sidetap listens for desk taps locally. Audio is discarded unless you explicitly enable debug recording.
-        NSLocationUsageDescription: Sidetap uses your location to switch to the desk profile you set up there. Sidetap stores desk locations only on this Mac.
-        NSLocationWhenInUseUsageDescription: Sidetap uses your location to switch to the desk profile you set up there. Sidetap stores desk locations only on this Mac.
         NSHighResolutionCapable: true
         NSSupportsAutomaticGraphicsSwitching: true
     entitlements:
@@ -50,7 +48,6 @@ targets:
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.device.audio-input: true
-        com.apple.security.personal-information.location: true
         com.apple.security.files.user-selected.read-write: true
         com.apple.security.files.bookmarks.app-scope: true
         # Screenshot actions save to the Desktop, which the sandbox otherwise blocks.
@@ -102,42 +99,6 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.sidetap.SidetapSoak
         GENERATE_INFOPLIST_FILE: YES
-  SidetapReplaySupport:
-    type: framework
-    platform: macOS
-    sources:
-      - path: Sources/SidetapReplaySupport
-    dependencies:
-      - target: SidetapCore
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.sidetap.SidetapReplaySupport
-        GENERATE_INFOPLIST_FILE: YES
-        SKIP_INSTALL: YES
-  SidetapReplay:
-    type: tool
-    platform: macOS
-    sources:
-      - path: Sources/SidetapReplay
-    dependencies:
-      - target: SidetapCore
-      - target: SidetapReplaySupport
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.sidetap.SidetapReplay
-        GENERATE_INFOPLIST_FILE: YES
-  SidetapReplayTests:
-    type: bundle.unit-test
-    platform: macOS
-    sources:
-      - path: Tests/SidetapReplayTests
-    dependencies:
-      - target: SidetapReplaySupport
-      - target: SidetapCore
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.sidetap.SidetapReplayTests
-        GENERATE_INFOPLIST_FILE: YES
   SidetapRouteCheck:
     type: tool
     platform: macOS
@@ -169,16 +130,6 @@ schemes:
         SidetapSoak: all
     run:
       config: Release
-  SidetapReplay:
-    build:
-      targets:
-        SidetapReplay: all
-    run:
-      config: Release
-    test:
-      config: Debug
-      targets:
-        - SidetapReplayTests
   SidetapRouteCheck:
     build:
       targets:

@@ -20,11 +20,11 @@ struct SeededGenerator: RandomNumberGenerator {
     }
 }
 
-private func syntheticEvent(zone: DeskZone, sampleRate: Double, variation: Double, generator: inout SeededGenerator) -> DetectedTap {
+private func syntheticEvent(sampleRate: Double, variation: Double, generator: inout SeededGenerator) -> DetectedTap {
     let count = Int(sampleRate * 0.090)
     let onset = Int(sampleRate * 0.012)
-    let baseFrequency = 260.0 + Double(zone.rawValue) * 145.0
-    let secondaryFrequency = 1_600.0 + Double(zone.column) * 820.0
+    let baseFrequency = 405.0
+    let secondaryFrequency = 2_420.0
     var samples = Array(repeating: Float.zero, count: count)
     for index in samples.indices {
         let noise = (generator.unit() - 0.5) * 0.0008
@@ -33,7 +33,7 @@ private func syntheticEvent(zone: DeskZone, sampleRate: Double, variation: Doubl
             continue
         }
         let time = Double(index - onset) / sampleRate
-        let envelope = exp(-time * (50 + Double(zone.row) * 7))
+        let envelope = exp(-time * 57)
         let tap = sin(2 * .pi * baseFrequency * (1 + variation) * time)
             + 0.42 * sin(2 * .pi * secondaryFrequency * time)
         samples[index] = Float(noise + 0.12 * envelope * tap)
@@ -69,21 +69,21 @@ let fast = arguments.contains("--fast")
 let sampleRate = 48_000.0
 var generator = SeededGenerator(state: 0x484F4C4F)
 let extractor = TapFeatureExtractor(sampleRate: sampleRate, strategy: .passive)
-var calibration: [LabeledTap] = []
+var calibration: [[TapFeatureVector]] = []
 
-for zone in DeskZone.allCases {
-    for sample in 0..<8 {
-        let variation = (Double(sample) - 3.5) * 0.002
-        calibration.append(LabeledTap(
-            zone: zone,
-            feature: extractor.extract(from: syntheticEvent(zone: zone, sampleRate: sampleRate, variation: variation, generator: &generator))
-        ))
+// The same shape as a real calibration: eight double taps, then eight triple taps.
+for gesture in CalibrationGuidance.gestures {
+    for repetition in 0..<CalibrationGuidance.repetitionsPerGesture {
+        calibration.append((0..<gesture.rawValue).map { tap in
+            let variation = (Double(repetition * gesture.rawValue + tap) - 10) * 0.0007
+            return extractor.extract(from: syntheticEvent(sampleRate: sampleRate, variation: variation, generator: &generator))
+        })
     }
 }
 
 let classifier: TrainedTapClassifier
 do {
-    classifier = try TrainedTapClassifier.train(positiveExamples: calibration)
+    classifier = try TrainedTapClassifier.train(gestures: calibration)
 } catch {
     fputs("soak setup failed: \(error)\n", stderr)
     exit(2)
@@ -92,18 +92,16 @@ do {
 let started = Date()
 let initialMemory = residentMegabytes()
 var iteration = 0
-var positiveCorrect = 0
+var positiveAccepted = 0
 var positiveRejected = 0
-var positiveWrong = 0
 var rejectionChallengesPassed = 0
 var rejectionChallengesFalseAccepted = 0
 var failures = 0
 var nextProgress = 60.0
 
 repeat {
-    let zone = DeskZone.allCases[iteration % DeskZone.allCases.count]
     let variation = (generator.unit() - 0.5) * 0.012
-    let event = syntheticEvent(zone: zone, sampleRate: sampleRate, variation: variation, generator: &generator)
+    let event = syntheticEvent(sampleRate: sampleRate, variation: variation, generator: &generator)
     var feature = extractor.extract(from: event)
     let expectsRejection = iteration % 10 == 9
     if expectsRejection {
@@ -123,19 +121,16 @@ repeat {
     let decision = classifier.predict(feature)
 
     if expectsRejection {
-        if decision.zone == nil {
-            rejectionChallengesPassed += 1
-        } else {
+        if decision.isTap {
             rejectionChallengesFalseAccepted += 1
             failures += 1
+        } else {
+            rejectionChallengesPassed += 1
         }
-    } else if decision.zone == zone {
-        positiveCorrect += 1
-    } else if decision.zone == nil {
-        positiveRejected += 1
-        failures += 1
+    } else if decision.isTap {
+        positiveAccepted += 1
     } else {
-        positiveWrong += 1
+        positiveRejected += 1
         failures += 1
     }
     if !decision.confidence.isFinite || feature.values.contains(where: { !$0.isFinite }) { failures += 1 }
@@ -154,7 +149,7 @@ let elapsed = Date().timeIntervalSince(started)
 let finalMemory = residentMegabytes()
 let growth = finalMemory - initialMemory
 let summary = String(
-    format: "Sidetap soak complete: %.1fs, \(iteration) events; positives \(positiveCorrect) correct, \(positiveRejected) rejected, \(positiveWrong) wrong; rejection challenges \(rejectionChallengesPassed) rejected, \(rejectionChallengesFalseAccepted) false accepted; RSS %.1f→%.1f MB (Δ %.1f MB)",
+    format: "Sidetap soak complete: %.1fs, \(iteration) events; taps \(positiveAccepted) accepted, \(positiveRejected) rejected; rejection challenges \(rejectionChallengesPassed) rejected, \(rejectionChallengesFalseAccepted) false accepted; RSS %.1f→%.1f MB (Δ %.1f MB)",
     elapsed, initialMemory, finalMemory, growth
 )
 print(summary)

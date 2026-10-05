@@ -101,20 +101,17 @@ public struct CallbackTimingAccumulator: Sendable {
 public struct DiagnosticCaptureRecord: Codable, Equatable, Sendable, Identifiable {
     public var id: UUID
     public var label: String
-    public var zone: DeskZone?
     public var feature: TapFeatureVector
     public var responseLatencyMilliseconds: Double
 
     public init(
         id: UUID = UUID(),
         label: String,
-        zone: DeskZone?,
         feature: TapFeatureVector,
         responseLatencyMilliseconds: Double
     ) {
         self.id = id
         self.label = label
-        self.zone = zone
         self.feature = feature
         self.responseLatencyMilliseconds = responseLatencyMilliseconds
     }
@@ -124,20 +121,17 @@ public struct DiagnosticSessionReport: Codable, Equatable, Sendable {
     public var generatedAt: Date
     public var microphone: MicrophoneDiagnostics
     public var captures: [DiagnosticCaptureRecord]
-    public var approachComparison: ApproachComparison?
     public var recordingsRetained: Bool
 
     public init(
         generatedAt: Date = Date(),
         microphone: MicrophoneDiagnostics,
         captures: [DiagnosticCaptureRecord],
-        approachComparison: ApproachComparison?,
         recordingsRetained: Bool
     ) {
         self.generatedAt = generatedAt
         self.microphone = microphone
         self.captures = captures
-        self.approachComparison = approachComparison
         self.recordingsRetained = recordingsRetained
     }
 

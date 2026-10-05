@@ -1,51 +1,31 @@
-import CoreLocation
 import XCTest
 @testable import SidetapCore
 
 final class PersistenceTests: XCTestCase {
     func testProfileRoundTripDoesNotStoreAudio() throws {
-        let temporary = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: temporary) }
-        let store = try ProfileStore(directory: temporary)
-        let classifier = try TrainedTapClassifier.train(positiveExamples: samples())
-        var zones = DeskZone.allCases.map { ZoneConfiguration(zone: $0) }
-        zones[DeskZone.leftTop.rawValue].action = ZoneActionConfiguration(
-            kind: .copyText,
-            text: "Focus mode"
-        )
-        zones[DeskZone.rightBottom.rawValue].action = ZoneActionConfiguration(
-            kind: .openApplication,
-            text: "Notes",
-            bookmarkData: Data([0x48, 0x4F, 0x4C, 0x4F])
-        )
-        let profile = SidetapProfile(
-            name: "Oak desk",
-            surfaceDescription: "Solid oak",
-            laptopPositionNote: "Centered",
-            classifier: classifier,
-            calibration: CalibrationSummary(
-                sampleCount: DeskZone.allCases.count * 2,
-                samplesPerZone: Array(repeating: 2, count: DeskZone.allCases.count),
-                leaveOneOutAccuracy: 1
-            ),
-            zones: zones
+        let url = temporaryFile()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = try ProfileStore(fileURL: url)
+        XCTAssertNil(try store.load())
+
+        var profile = SidetapProfile(classifier: try classifier(), maximumTapGap: 0.6)
+        profile.setAction(ActionConfiguration(kind: .copyText, text: "Focus mode"), for: .double)
+        profile.setAction(
+            ActionConfiguration(kind: .openApplication, text: "Notes", bookmarkData: Data([0x48, 0x4F, 0x4C, 0x4F])),
+            for: .triple
         )
         try store.save(profile)
-        let loaded = try XCTUnwrap(store.loadAll().first)
-        XCTAssertEqual(loaded.id, profile.id)
-        XCTAssertEqual(loaded.name, "Oak desk")
-        XCTAssertEqual(loaded.zones.map(\.zone), DeskZone.allCases)
-        XCTAssertEqual(loaded.action(for: .leftTop).kind, .copyText)
-        XCTAssertEqual(loaded.action(for: .leftTop).text, "Focus mode")
-        XCTAssertEqual(loaded.action(for: .rightBottom).kind, .openApplication)
-        XCTAssertEqual(loaded.action(for: .rightBottom).bookmarkData, Data([0x48, 0x4F, 0x4C, 0x4F]))
 
-        let files = try FileManager.default.contentsOfDirectory(at: temporary, includingPropertiesForKeys: nil)
-        XCTAssertEqual(files.count, 1)
-        XCTAssertEqual(files.first?.pathExtension, "json")
+        let loaded = try XCTUnwrap(store.load())
+        XCTAssertEqual(loaded.maximumTapGap, 0.6)
+        XCTAssertEqual(loaded.classifier.noveltyThreshold, profile.classifier.noveltyThreshold)
+        XCTAssertEqual(loaded.classifier.positiveExamples.map(\.values), profile.classifier.positiveExamples.map(\.values))
+        XCTAssertEqual(loaded.action(for: .double).kind, .copyText)
+        XCTAssertEqual(loaded.action(for: .double).text, "Focus mode")
+        XCTAssertEqual(loaded.action(for: .triple).kind, .openApplication)
+        XCTAssertEqual(loaded.action(for: .triple).bookmarkData, Data([0x48, 0x4F, 0x4C, 0x4F]))
 
-        let persistedURL = try XCTUnwrap(files.first)
-        let persistedData = try Data(contentsOf: persistedURL)
+        let persistedData = try Data(contentsOf: url)
         let persistedJSON = try XCTUnwrap(String(data: persistedData, encoding: .utf8))
         XCTAssertFalse(persistedJSON.contains("\"channels\""))
         XCTAssertFalse(persistedJSON.contains("\"onsetOffset\""))
@@ -53,180 +33,81 @@ final class PersistenceTests: XCTestCase {
         XCTAssertFalse(persistedData.starts(with: Data("RIFF".utf8)))
     }
 
-    func testPinnedLocationRoundTripsAndSelectsNearestDesk() throws {
-        let temporary = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: temporary) }
-        let store = try ProfileStore(directory: temporary)
-        let classifier = try TrainedTapClassifier.train(positiveExamples: samples())
-        func profile(_ name: String, _ location: ProfileLocation?) -> SidetapProfile {
-            var profile = SidetapProfile(
-                name: name,
-                surfaceDescription: "Oak",
-                laptopPositionNote: "Centered",
-                classifier: classifier,
-                calibration: CalibrationSummary(
-                    sampleCount: DeskZone.allCases.count * 2,
-                    samplesPerZone: Array(repeating: 2, count: DeskZone.allCases.count),
-                    leaveOneOutAccuracy: 1
-                )
-            )
-            profile.location = location
-            return profile
-        }
-        let home = profile("Home", ProfileLocation(latitude: 40.7484, longitude: -73.9857))
-        let work = profile("Work", ProfileLocation(latitude: 40.7061, longitude: -74.0087))
-        let unpinned = profile("Travel", nil)
-        try [home, work, unpinned].forEach(store.save)
+    func testGesturesAndTheirActionsRoundTrip() throws {
+        let url = temporaryFile()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = try ProfileStore(fileURL: url)
 
-        var withGesture = home
-        withGesture.setAction(ZoneActionConfiguration(kind: .pasteText), for: .double)
-        withGesture.addGesture()
-        withGesture.addGesture()
+        // Without any actions, a profile has a double and a triple tap that do nothing.
+        var profile = SidetapProfile(classifier: try classifier())
+        XCTAssertEqual(profile.gestures, [.double, .triple])
+        XCTAssertEqual(profile.action(for: .double).kind, ActionKind.none)
+        XCTAssertEqual(profile.maximumTapGap, TapGestureCounter.maximumGap)
+
+        profile.setAction(ActionConfiguration(kind: .pasteText), for: .double)
+        profile.addGesture()
+        profile.addGesture()
         let fiveTaps = try XCTUnwrap(TapGesture(rawValue: 5))
-        withGesture.setAction(ZoneActionConfiguration(kind: .mediaKey), for: fiveTaps)
-        try store.save(withGesture)
-
-        let loaded = try store.loadAll()
-        // A saved gesture action comes back; a profile saved without one has no action.
-        XCTAssertEqual(loaded.first { $0.id == home.id }?.action(for: .double).kind, .pasteText)
-        XCTAssertEqual(loaded.first { $0.id == home.id }?.action(for: .triple).kind, ZoneActionKind.none)
-        XCTAssertEqual(loaded.first { $0.id == work.id }?.action(for: .double).kind, ZoneActionKind.none)
-        // Added gestures come back too. A profile without any has a double and a triple tap.
-        var reloaded = try XCTUnwrap(loaded.first { $0.id == home.id })
-        XCTAssertEqual(reloaded.gestures.map(\.rawValue), [2, 3, 4, 5])
-        XCTAssertEqual(reloaded.action(for: fiveTaps).kind, .mediaKey)
-        reloaded.removeLastGesture()
-        XCTAssertEqual(reloaded.gestures.map(\.rawValue), [2, 3, 4])
-        XCTAssertEqual(loaded.first { $0.id == work.id }?.gestures, [.double, .triple])
-        XCTAssertEqual(loaded.first { $0.id == home.id }?.location, home.location)
-        XCTAssertNil(loaded.first { $0.id == unpinned.id }?.location)
-
-        // About 50 m from each desk, then more than 5 km from both.
-        XCTAssertEqual(loaded.nearest(to: CLLocation(latitude: 40.7488, longitude: -73.9855))?.id, home.id)
-        XCTAssertEqual(loaded.nearest(to: CLLocation(latitude: 40.7064, longitude: -74.0090))?.id, work.id)
-        XCTAssertNil(loaded.nearest(to: CLLocation(latitude: 40.7900, longitude: -73.9500)))
-    }
-
-    func testLegacySixZoneProfileIsIgnoredBeforeZoneDecoding() throws {
-        let temporary = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: temporary) }
-        let store = try ProfileStore(directory: temporary)
-        let classifier = try TrainedTapClassifier.train(positiveExamples: samples())
-        var profile = SidetapProfile(
-            name: "Legacy desk",
-            surfaceDescription: "Wood",
-            laptopPositionNote: "Centered",
-            classifier: classifier,
-            calibration: CalibrationSummary(
-                sampleCount: DeskZone.allCases.count * 2,
-                samplesPerZone: Array(repeating: 2, count: DeskZone.allCases.count),
-                leaveOneOutAccuracy: nil
-            )
-        )
-        profile.version = SidetapProfile.currentVersion - 1
-
+        profile.setAction(ActionConfiguration(kind: .mediaKey), for: fiveTaps)
         try store.save(profile)
 
-        XCTAssertTrue(try store.loadAll().isEmpty)
+        var loaded = try XCTUnwrap(store.load())
+        XCTAssertEqual(loaded.gestures.map(\.rawValue), [2, 3, 4, 5])
+        XCTAssertEqual(loaded.action(for: .double).kind, .pasteText)
+        XCTAssertEqual(loaded.action(for: .triple).kind, ActionKind.none)
+        XCTAssertEqual(loaded.action(for: fiveTaps).kind, .mediaKey)
+
+        // Removing takes the gesture with the most taps, and never the double or triple tap.
+        loaded.removeLastGesture()
+        XCTAssertEqual(loaded.gestures.map(\.rawValue), [2, 3, 4])
+        loaded.removeLastGesture()
+        loaded.removeLastGesture()
+        XCTAssertEqual(loaded.gestures, [.double, .triple])
+        XCTAssertEqual(loaded.action(for: .double).kind, .pasteText)
     }
 
-    func testLegacyNineZoneValuesAreSkippedBeforeCurrentEnumDecoding() throws {
-        let temporary = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: temporary) }
-        let store = try ProfileStore(directory: temporary)
-        let legacy = temporary.appendingPathComponent("legacy-nine-zone.json")
-        try Data(#"{"version":1,"zones":[{"zone":8}]}"#.utf8).write(to: legacy)
+    func testFilesFromEarlierVersionsAreSkippedBeforeDecoding() throws {
+        let url = temporaryFile()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = try ProfileStore(fileURL: url)
 
-        XCTAssertTrue(try store.loadAll().isEmpty)
+        var earlier = SidetapProfile(classifier: try classifier())
+        earlier.version = SidetapProfile.currentVersion - 1
+        try store.save(earlier)
+        XCTAssertNil(try store.load())
+
+        // A profile from the four-zone calibration no longer matches the current shape at all.
+        try Data(#"{"version":3,"name":"Oak desk","zones":[{"zone":0}]}"#.utf8).write(to: url)
+        XCTAssertNil(try store.load())
     }
 
-    func testCorruptProfileIsReportedInsteadOfSilentlyIgnored() throws {
-        let temporary = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: temporary) }
-        let store = try ProfileStore(directory: temporary)
-        let corrupt = temporary.appendingPathComponent("corrupt.json")
-        try Data("{ not valid json".utf8).write(to: corrupt)
+    func testCorruptFileIsReportedInsteadOfSilentlyIgnored() throws {
+        let url = temporaryFile()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = try ProfileStore(fileURL: url)
+        try Data("{ not valid json".utf8).write(to: url)
 
-        XCTAssertThrowsError(try store.loadAll())
+        XCTAssertThrowsError(try store.load())
     }
 
-    func testCurrentProfileWithMissingZoneIsReported() throws {
-        let temporary = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: temporary) }
-        let store = try ProfileStore(directory: temporary)
-        let classifier = try TrainedTapClassifier.train(positiveExamples: samples())
-        var profile = SidetapProfile(
-            name: "Incomplete desk",
-            surfaceDescription: "Wood",
-            laptopPositionNote: "Centered",
-            classifier: classifier,
-            calibration: CalibrationSummary(
-                sampleCount: DeskZone.allCases.count * 2,
-                samplesPerZone: Array(repeating: 2, count: DeskZone.allCases.count),
-                leaveOneOutAccuracy: 1
-            )
-        )
-        profile.zones.removeLast()
-        try store.save(profile)
+    func testDamagedCalibrationIsReported() throws {
+        let damage: [(inout SidetapProfile) -> Void] = [
+            { $0.classifier.positiveExamples.removeAll() },
+            { $0.classifier.scales[0] = 0 },
+            { $0.classifier.negativeExamples = [self.tap(0, names: ["other"])] },
+            { $0.maximumTapGap = 0 }
+        ]
+        for change in damage {
+            let url = temporaryFile()
+            defer { try? FileManager.default.removeItem(at: url) }
+            let store = try ProfileStore(fileURL: url)
+            var profile = SidetapProfile(classifier: try classifier())
+            change(&profile)
+            try store.save(profile)
 
-        XCTAssertThrowsError(try store.loadAll()) { error in
-            XCTAssertEqual(
-                error as? ProfileStoreError,
-                .invalidCurrentTopology("\(profile.id.uuidString).json")
-            )
-        }
-    }
-
-    func testCurrentProfileWithIncompleteClassifierIsReported() throws {
-        let temporary = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: temporary) }
-        let store = try ProfileStore(directory: temporary)
-        let classifier = try TrainedTapClassifier.train(positiveExamples: samples())
-        var profile = SidetapProfile(
-            name: "Damaged classifier",
-            surfaceDescription: "Wood",
-            laptopPositionNote: "Centered",
-            classifier: classifier,
-            calibration: CalibrationSummary(
-                sampleCount: DeskZone.allCases.count * 2,
-                samplesPerZone: Array(repeating: 2, count: DeskZone.allCases.count),
-                leaveOneOutAccuracy: 1
-            )
-        )
-        profile.classifier.positiveExamples.removeAll { $0.zone == .rightBottom }
-        try store.save(profile)
-
-        XCTAssertThrowsError(try store.loadAll()) { error in
-            XCTAssertEqual(
-                error as? ProfileStoreError,
-                .invalidCurrentClassifier("\(profile.id.uuidString).json")
-            )
-        }
-    }
-
-    func testCurrentProfileWithMismatchedCalibrationSummaryIsReported() throws {
-        let temporary = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: temporary) }
-        let store = try ProfileStore(directory: temporary)
-        let classifier = try TrainedTapClassifier.train(positiveExamples: samples())
-        let profile = SidetapProfile(
-            name: "Damaged summary",
-            surfaceDescription: "Wood",
-            laptopPositionNote: "Centered",
-            classifier: classifier,
-            calibration: CalibrationSummary(
-                sampleCount: DeskZone.allCases.count * 2 + 1,
-                samplesPerZone: Array(repeating: 2, count: DeskZone.allCases.count),
-                leaveOneOutAccuracy: 1
-            )
-        )
-        try store.save(profile)
-
-        XCTAssertThrowsError(try store.loadAll()) { error in
-            XCTAssertEqual(
-                error as? ProfileStoreError,
-                .invalidCurrentCalibration("\(profile.id.uuidString).json")
-            )
+            XCTAssertThrowsError(try store.load()) { error in
+                XCTAssertEqual(error as? ProfileStoreError, .invalidCalibration)
+            }
         }
     }
 
@@ -240,116 +121,28 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(data.count, 44 + 3 * 4)
     }
 
-    func testEvaluationStoreRoundTripsJSONAndCSV() throws {
-        let temporary = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: temporary) }
-        let store = try EvaluationStore(directory: temporary)
-        let profileID = UUID()
-        let timestamp = Date(timeIntervalSince1970: 1_700_000_000)
-        let decision = ClassificationDecision(
-            zone: .rightBottom,
-            confidence: 0.88,
-            signalStrength: 0.72,
-            zoneDistances: [],
-            rejectionReason: nil
-        )
-        let report = EvaluationReport(
-            profileID: profileID,
-            profileName: "Oak",
-            strategy: .passive,
-            startedAt: timestamp.addingTimeInterval(-10),
-            completedAt: timestamp,
-            records: [EvaluationRecord(
-                expectedZone: .rightBottom,
-                decision: decision,
-                responseLatencyMilliseconds: 123,
-                capturedAt: timestamp
-            )]
-        )
-
-        let jsonURL = try store.save(report)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: jsonURL.path))
-        XCTAssertTrue(FileManager.default.fileExists(
-            atPath: jsonURL.deletingPathExtension().appendingPathExtension("csv").path
-        ))
-
-        let loaded = try XCTUnwrap(store.loadAll().first)
-        XCTAssertEqual(loaded.profileID, profileID)
-        XCTAssertEqual(loaded.profileName, "Oak")
-        XCTAssertEqual(loaded.topologyZoneCount, DeskZone.allCases.count)
-        XCTAssertEqual(loaded.records.count, 1)
-        XCTAssertEqual(loaded.records.first?.predictedZone, .rightBottom)
-        XCTAssertEqual(loaded.records.first?.responseLatencyMilliseconds, 123)
+    private func temporaryFile() -> URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).json")
     }
 
-    func testEvaluationStoreSkipsReportsFromOlderTopologies() throws {
-        let temporary = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: temporary) }
-        let store = try EvaluationStore(directory: temporary)
-        let oldReport = EvaluationReport(
-            topologyZoneCount: 6,
-            profileName: "Old six-zone desk",
-            strategy: .passive,
-            startedAt: Date(),
-            records: []
-        )
-        try oldReport.jsonData().write(to: temporary.appendingPathComponent("old.json"))
-
-        XCTAssertTrue(try store.loadAll().isEmpty)
+    /// Trained on two double taps.
+    private func classifier() throws -> TrainedTapClassifier {
+        try TrainedTapClassifier.train(gestures: [[tap(0), tap(0.01)], [tap(0.02), tap(0.03)]])
     }
 
-    func testApproachComparisonRejectsObsoleteTopology() throws {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).json")
-        defer { try? FileManager.default.removeItem(at: url) }
-        let store = try ApproachComparisonStore(fileURL: url)
-        let score = ApproachScore(
+    private func tap(_ offset: Double, names: [String] = ["x", "y"]) -> TapFeatureVector {
+        TapFeatureVector(
             strategy: .passive,
-            crossValidationAccuracy: 0.8,
-            rejectionRate: 0.1,
-            medianProcessingLatencyMilliseconds: 3,
-            sampleCount: 18
+            names: names,
+            values: names.indices.map { Double($0) + offset },
+            quality: SignalQuality(
+                signalToNoiseDB: 20,
+                peakAmplitude: 0.1,
+                rmsAmplitude: 0.02,
+                clippingFraction: 0,
+                noiseFloorRMS: 0.001,
+                durationMilliseconds: 90
+            )
         )
-
-        try store.save(ApproachComparison(
-            scores: [score],
-            selectedStrategy: .passive,
-            measuredAt: Date(),
-            topologyZoneCount: 9
-        ))
-        XCTAssertNil(try store.load())
-
-        let profileID = UUID()
-        let current = ApproachComparison(
-            scores: [score],
-            selectedStrategy: .passive,
-            measuredAt: Date(),
-            profileID: profileID
-        )
-        try store.save(current)
-        XCTAssertEqual(try store.load()?.topologyZoneCount, DeskZone.allCases.count)
-        XCTAssertEqual(try store.load()?.profileID, profileID)
-    }
-
-    private func samples() -> [LabeledTap] {
-        DeskZone.allCases.flatMap { zone in
-            (0..<2).map { index in
-                LabeledTap(
-                    zone: zone,
-                    feature: TapFeatureVector(
-                        strategy: .passive,
-                        names: ["x", "y"],
-                        values: [Double(zone.row) + Double(index) * 0.01, Double(zone.column) - Double(index) * 0.01],
-                        quality: SignalQuality(
-                            signalToNoiseDB: 20,
-                            peakAmplitude: 0.1,
-                            rmsAmplitude: 0.02,
-                            clippingFraction: 0,
-                            noiseFloorRMS: 0.001,
-                            durationMilliseconds: 90
-                        )
-                    )
-                )
-            }
-        }
     }
 }

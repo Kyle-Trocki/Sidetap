@@ -28,10 +28,6 @@
 	<true/>
 	<key>NSHighResolutionCapable</key>
 	<true/>
-	<key>NSLocationUsageDescription</key>
-	<string>Sidetap uses your location to switch to the desk profile you set up there. Sidetap stores desk locations only on this Mac.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Sidetap uses your location to switch to the desk profile you set up there. Sidetap stores desk locations only on this Mac.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Sidetap listens for desk taps locally. Audio is discarded unless you explicitly enable debug recording.</string>
 	<key>NSSupportsAutomaticGraphicsSwitching</key>

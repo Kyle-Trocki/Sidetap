@@ -3,13 +3,12 @@ import SidetapCore
 import SwiftUI
 import UniformTypeIdentifiers
 
-struct ZoneActionsView: View {
+struct ActionsView: View {
     @ObservedObject var model: AppModel
-    @State private var confirmDelete = false
 
     var body: some View {
         Group {
-            if let profile = model.selectedProfile {
+            if let profile = model.profile {
                 VStack(alignment: .leading, spacing: 18) {
                     VStack(alignment: .leading, spacing: 5) {
                         Text("Assign actions")
@@ -22,7 +21,7 @@ struct ZoneActionsView: View {
                     Form {
                         Section("Gestures") {
                             ForEach(profile.gestures) { gesture in
-                                ZoneActionRow(
+                                ActionRow(
                                     title: gesture.displayName,
                                     action: profile.action(for: gesture),
                                     onChange: { action in
@@ -33,7 +32,7 @@ struct ZoneActionsView: View {
                                         model.errorMessage = "The action could not be assigned. \(error.localizedDescription)"
                                     }
                                 )
-                                .id("\(profile.id)-\(gesture.rawValue)")
+                                .id(gesture.rawValue)
                             }
                             HStack {
                                 Button("Add Gesture", systemImage: "plus") { model.addGesture() }
@@ -52,20 +51,7 @@ struct ZoneActionsView: View {
                         }
                         .font(.caption)
                         .foregroundStyle(.secondary)
-
-                        Section {
-                            HStack {
-                                Text("Profile: \(profile.name)")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                Spacer()
-                                Button("Delete Profile", role: .destructive) {
-                                    confirmDelete = true
-                                }
-                            }
-                        }
                     }
-
                     .formStyle(.grouped)
                 }
                 .frame(maxWidth: 780, alignment: .leading)
@@ -73,9 +59,9 @@ struct ZoneActionsView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ContentUnavailableView {
-                    Label("No Desk Profile", systemImage: "macbook")
+                    Label("Not Calibrated", systemImage: "macbook")
                 } description: {
-                    Text("Calibrate the four zones before assigning actions.")
+                    Text("Calibrate your taps before you assign actions.")
                 } actions: {
                     Button("Open Calibration") { model.section = .calibrate }
                         .sidetapPrimaryButton()
@@ -83,21 +69,15 @@ struct ZoneActionsView: View {
             }
         }
         .background(SidetapTheme.background)
-        .confirmationDialog("Delete this desk profile?", isPresented: $confirmDelete) {
-            Button("Delete Profile", role: .destructive) { model.deleteSelectedProfile() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("The saved calibration and its actions will be removed.")
-        }
     }
 }
 
-private struct ZoneActionRow: View {
+private struct ActionRow: View {
     let title: String
-    let onChange: (ZoneActionConfiguration) -> Bool
-    let onTest: (ZoneActionConfiguration) -> Void
+    let onChange: (ActionConfiguration) -> Bool
+    let onTest: (ActionConfiguration) -> Void
     let onError: (Error) -> Void
-    @State private var action: ZoneActionConfiguration
+    @State private var action: ActionConfiguration
     @State private var isRevertingFailedSave = false
     /// The key monitor that is installed while a keyboard shortcut is being recorded.
     @State private var keyMonitor: Any?
@@ -106,9 +86,9 @@ private struct ZoneActionRow: View {
 
     init(
         title: String,
-        action: ZoneActionConfiguration,
-        onChange: @escaping (ZoneActionConfiguration) -> Bool,
-        onTest: @escaping (ZoneActionConfiguration) -> Void,
+        action: ActionConfiguration,
+        onChange: @escaping (ActionConfiguration) -> Bool,
+        onTest: @escaping (ActionConfiguration) -> Void,
         onError: @escaping (Error) -> Void
     ) {
         self.title = title
@@ -122,7 +102,7 @@ private struct ZoneActionRow: View {
         LabeledContent {
             HStack(spacing: 12) {
                 Picker("Action", selection: $action.kind) {
-                    ForEach(ZoneActionKind.allCases) { kind in
+                    ForEach(ActionKind.allCases) { kind in
                         Text(kind.displayName).tag(kind)
                     }
                 }

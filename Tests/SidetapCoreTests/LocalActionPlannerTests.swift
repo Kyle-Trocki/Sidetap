@@ -3,56 +3,56 @@ import XCTest
 
 final class LocalActionPlannerTests: XCTestCase {
     func testVisualAndIncompleteActionsProduceNoCommand() {
-        XCTAssertEqual(ZoneActionConfiguration().kind, .none)
-        XCTAssertNil(LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .none)))
-        XCTAssertNil(LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .copyText, text: "  ")))
+        XCTAssertEqual(ActionConfiguration().kind, .none)
+        XCTAssertNil(LocalActionPlanner.command(for: ActionConfiguration(kind: .none)))
+        XCTAssertNil(LocalActionPlanner.command(for: ActionConfiguration(kind: .copyText, text: "  ")))
         // Paste text with no text still acts: it pastes the current pasteboard.
-        XCTAssertEqual(LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .pasteText, text: "  ")), .pasteText(""))
-        XCTAssertNil(LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .speakText, text: "\n")))
-        XCTAssertNil(LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .runShortcut, text: "")))
-        XCTAssertNil(LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .openApplication)))
-        XCTAssertNil(LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .openItem)))
-        XCTAssertNil(LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .runShellCommand, text: "  ")))
+        XCTAssertEqual(LocalActionPlanner.command(for: ActionConfiguration(kind: .pasteText, text: "  ")), .pasteText(""))
+        XCTAssertNil(LocalActionPlanner.command(for: ActionConfiguration(kind: .speakText, text: "\n")))
+        XCTAssertNil(LocalActionPlanner.command(for: ActionConfiguration(kind: .runShortcut, text: "")))
+        XCTAssertNil(LocalActionPlanner.command(for: ActionConfiguration(kind: .openApplication)))
+        XCTAssertNil(LocalActionPlanner.command(for: ActionConfiguration(kind: .openItem)))
+        XCTAssertNil(LocalActionPlanner.command(for: ActionConfiguration(kind: .runShellCommand, text: "  ")))
     }
 
     func testSoundAndTextCommandsPreserveConfiguredContent() {
         XCTAssertEqual(
-            LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .sound, soundName: " Tink ")),
+            LocalActionPlanner.command(for: ActionConfiguration(kind: .sound, soundName: " Tink ")),
             .playSound(name: "Tink")
         )
         XCTAssertEqual(
-            LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .copyText, text: " Focus mode ")),
+            LocalActionPlanner.command(for: ActionConfiguration(kind: .copyText, text: " Focus mode ")),
             .copyText(" Focus mode ")
         )
         XCTAssertEqual(
-            LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .pasteText, text: "On my way")),
+            LocalActionPlanner.command(for: ActionConfiguration(kind: .pasteText, text: "On my way")),
             .pasteText("On my way")
         )
         XCTAssertEqual(
-            LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .speakText, text: "Done")),
+            LocalActionPlanner.command(for: ActionConfiguration(kind: .speakText, text: "Done")),
             .speakText("Done")
         )
     }
 
     func testWebsiteCommandDefaultsToHTTPSAndRejectsUnsafeSchemes() throws {
-        let command = try XCTUnwrap(LocalActionPlanner.command(for: ZoneActionConfiguration(
+        let command = try XCTUnwrap(LocalActionPlanner.command(for: ActionConfiguration(
             kind: .openURL,
             text: "example.com/path"
         )))
         XCTAssertEqual(command, .openURL(try XCTUnwrap(URL(string: "https://example.com/path"))))
 
-        XCTAssertNil(LocalActionPlanner.command(for: ZoneActionConfiguration(
+        XCTAssertNil(LocalActionPlanner.command(for: ActionConfiguration(
             kind: .openURL,
             text: "file:///tmp/secret"
         )))
-        XCTAssertNil(LocalActionPlanner.command(for: ZoneActionConfiguration(
+        XCTAssertNil(LocalActionPlanner.command(for: ActionConfiguration(
             kind: .openURL,
             text: "https://"
         )))
     }
 
     func testShortcutNameIsEncodedAsAQueryValue() throws {
-        let command = try XCTUnwrap(LocalActionPlanner.command(for: ZoneActionConfiguration(
+        let command = try XCTUnwrap(LocalActionPlanner.command(for: ActionConfiguration(
             kind: .runShortcut,
             text: "Focus & Work"
         )))
@@ -69,13 +69,13 @@ final class LocalActionPlannerTests: XCTestCase {
     func testApplicationCommandRequiresNonemptyBookmarkData() {
         let bookmark = Data([0x48, 0x4F, 0x4C, 0x4F])
         XCTAssertEqual(
-            LocalActionPlanner.command(for: ZoneActionConfiguration(
+            LocalActionPlanner.command(for: ActionConfiguration(
                 kind: .openApplication,
                 bookmarkData: bookmark
             )),
             .openApplication(bookmarkData: bookmark)
         )
-        XCTAssertNil(LocalActionPlanner.command(for: ZoneActionConfiguration(
+        XCTAssertNil(LocalActionPlanner.command(for: ActionConfiguration(
             kind: .openApplication,
             bookmarkData: Data()
         )))
@@ -84,7 +84,7 @@ final class LocalActionPlannerTests: XCTestCase {
     func testFileAndFolderCommandRequiresNonemptyBookmarkData() {
         let bookmark = Data([0x46, 0x49, 0x4C, 0x45])
         XCTAssertEqual(
-            LocalActionPlanner.command(for: ZoneActionConfiguration(
+            LocalActionPlanner.command(for: ActionConfiguration(
                 kind: .openItem,
                 bookmarkData: bookmark
             )),
@@ -94,13 +94,13 @@ final class LocalActionPlannerTests: XCTestCase {
 
     func testShellCommandIsTrimmedAndRejectsNullBytes() {
         XCTAssertEqual(
-            LocalActionPlanner.command(for: ZoneActionConfiguration(
+            LocalActionPlanner.command(for: ActionConfiguration(
                 kind: .runShellCommand,
                 text: "  open -a Claude  "
             )),
             .runShellCommand("open -a Claude")
         )
-        XCTAssertNil(LocalActionPlanner.command(for: ZoneActionConfiguration(
+        XCTAssertNil(LocalActionPlanner.command(for: ActionConfiguration(
             kind: .runShellCommand,
             text: "echo before\0after"
         )))
@@ -108,70 +108,40 @@ final class LocalActionPlannerTests: XCTestCase {
 
     func testScreenshotCommandsNeedNoAdditionalConfiguration() {
         XCTAssertEqual(
-            LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .screenshotClipboard)),
+            LocalActionPlanner.command(for: ActionConfiguration(kind: .screenshotClipboard)),
             .takeScreenshot(interactive: false, destination: .desktop)
         )
         XCTAssertEqual(
-            LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .screenshotSelection)),
+            LocalActionPlanner.command(for: ActionConfiguration(kind: .screenshotSelection)),
             .takeScreenshot(interactive: true, destination: .desktop)
         )
         // The destination is the action's text; anything unrecognized saves to the Desktop.
         for destination in ScreenshotDestination.allCases {
             XCTAssertEqual(
-                LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .screenshotSelection, text: destination.rawValue)),
+                LocalActionPlanner.command(for: ActionConfiguration(kind: .screenshotSelection, text: destination.rawValue)),
                 .takeScreenshot(interactive: true, destination: destination)
             )
         }
         XCTAssertEqual(
-            LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .screenshotClipboard, text: "leftover text")),
+            LocalActionPlanner.command(for: ActionConfiguration(kind: .screenshotClipboard, text: "leftover text")),
             .takeScreenshot(interactive: false, destination: .desktop)
         )
     }
 
     func testKeyboardShortcutNeedsARecordedKeyAndMediaControlDefaultsToPlayOrPause() {
         // The label alone isn't a shortcut; the key code is.
-        XCTAssertNil(LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .pressKeys, text: "⌘K")))
+        XCTAssertNil(LocalActionPlanner.command(for: ActionConfiguration(kind: .pressKeys, text: "⌘K")))
         XCTAssertEqual(
-            LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .pressKeys, keyCode: 40, keyModifiers: 0x100000)),
+            LocalActionPlanner.command(for: ActionConfiguration(kind: .pressKeys, keyCode: 40, keyModifiers: 0x100000)),
             .pressKeys(keyCode: 40, modifiers: 0x100000)
         )
         XCTAssertEqual(
-            LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .mediaKey, text: MediaKey.mute.rawValue)),
+            LocalActionPlanner.command(for: ActionConfiguration(kind: .mediaKey, text: MediaKey.mute.rawValue)),
             .pressMediaKey(.mute)
         )
         XCTAssertEqual(
-            LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .mediaKey, text: "leftover text")),
+            LocalActionPlanner.command(for: ActionConfiguration(kind: .mediaKey, text: "leftover text")),
             .pressMediaKey(.playPause)
         )
-    }
-
-    func testAutomaticDispatchRequiresAcceptedDecisionOnDesk() {
-        let accepted = ClassificationDecision(
-            zone: .rightTop,
-            confidence: 0.9,
-            signalStrength: 0.8,
-            zoneDistances: [],
-            rejectionReason: nil
-        )
-        let rejected = ClassificationDecision(
-            zone: nil,
-            confidence: 0.2,
-            signalStrength: 0.3,
-            zoneDistances: [],
-            rejectionReason: .ambiguousZone
-        )
-
-        XCTAssertTrue(LocalActionDispatchPolicy.allowsAutomaticDispatch(
-            for: accepted,
-            isDeskActive: true
-        ))
-        XCTAssertFalse(LocalActionDispatchPolicy.allowsAutomaticDispatch(
-            for: accepted,
-            isDeskActive: false
-        ))
-        XCTAssertFalse(LocalActionDispatchPolicy.allowsAutomaticDispatch(
-            for: rejected,
-            isDeskActive: true
-        ))
     }
 }
