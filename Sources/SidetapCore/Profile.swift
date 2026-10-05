@@ -14,6 +14,8 @@ public enum ZoneActionKind: String, CaseIterable, Codable, Sendable, Identifiabl
     case runShellCommand
     case screenshotClipboard
     case screenshotSelection
+    case pressKeys
+    case mediaKey
 
     public var id: String { rawValue }
 
@@ -32,21 +34,59 @@ public enum ZoneActionKind: String, CaseIterable, Codable, Sendable, Identifiabl
         // The case names are saved in profiles and predate the destination option.
         case .screenshotClipboard: return "Screenshot"
         case .screenshotSelection: return "Screenshot selected area"
+        case .pressKeys: return "Press keyboard shortcut"
+        case .mediaKey: return "Media control"
         }
     }
 }
 
-/// The gestures that run actions: a double or a triple tap anywhere on the desk.
-public enum TapGesture: Int, CaseIterable, Codable, Sendable, Identifiable {
-    case double = 2
-    case triple = 3
+/// A gesture that runs an action: two or more taps anywhere on the desk. The
+/// raw value is the number of taps.
+public struct TapGesture: RawRepresentable, Hashable, Sendable, Identifiable {
+    public static let double = TapGesture(taps: 2)
+    public static let triple = TapGesture(taps: 3)
 
+    public let rawValue: Int
     public var id: Int { rawValue }
+
+    /// Nil below two taps: a single tap is never a gesture, because any stray
+    /// knock on the desk would run its action.
+    public init?(rawValue: Int) {
+        guard rawValue >= 2 else { return nil }
+        self.rawValue = rawValue
+    }
+
+    private init(taps: Int) { rawValue = taps }
+
+    public var displayName: String {
+        switch rawValue {
+        case 2: return "Double tap"
+        case 3: return "Triple tap"
+        default: return "\(rawValue) taps"
+        }
+    }
+}
+
+/// The key a media control action presses. The action stores the raw value in
+/// its `text`; anything unrecognized, including empty, means play or pause.
+public enum MediaKey: String, CaseIterable, Sendable, Identifiable {
+    case playPause
+    case nextTrack
+    case previousTrack
+    case volumeUp
+    case volumeDown
+    case mute
+
+    public var id: String { rawValue }
 
     public var displayName: String {
         switch self {
-        case .double: return "Double tap"
-        case .triple: return "Triple tap"
+        case .playPause: return "Play or pause"
+        case .nextTrack: return "Next track"
+        case .previousTrack: return "Previous track"
+        case .volumeUp: return "Volume up"
+        case .volumeDown: return "Volume down"
+        case .mute: return "Mute"
         }
     }
 }
@@ -74,17 +114,25 @@ public struct ZoneActionConfiguration: Codable, Equatable, Sendable {
     public var soundName: String
     public var text: String
     public var bookmarkData: Data?
+    /// The key and modifiers that a keyboard shortcut action presses: a virtual
+    /// key code and `CGEventFlags` bits. The action's `text` holds the label.
+    public var keyCode: UInt16?
+    public var keyModifiers: UInt64?
 
     public init(
         kind: ZoneActionKind = .none,
         soundName: String = "Tink",
         text: String = "",
-        bookmarkData: Data? = nil
+        bookmarkData: Data? = nil,
+        keyCode: UInt16? = nil,
+        keyModifiers: UInt64? = nil
     ) {
         self.kind = kind
         self.soundName = soundName
         self.text = text
         self.bookmarkData = bookmarkData
+        self.keyCode = keyCode
+        self.keyModifiers = keyModifiers
     }
 }
 
@@ -149,6 +197,10 @@ public struct SidetapProfile: Codable, Equatable, Sendable, Identifiable {
     /// decode as nil, which means no action.
     public var doubleTapAction: ZoneActionConfiguration?
     public var tripleTapAction: ZoneActionConfiguration?
+    /// What gestures of four or more taps run, keyed by tap count. Double and
+    /// triple taps keep their own fields so that earlier profiles still load.
+    /// Profiles saved before these gestures decode as nil.
+    public var moreTapActions: [Int: ZoneActionConfiguration]?
 
     public init(
         id: UUID = UUID(),
@@ -177,15 +229,40 @@ public struct SidetapProfile: Codable, Equatable, Sendable, Identifiable {
         zones.first(where: { $0.zone == zone })?.action ?? ZoneActionConfiguration(kind: .none)
     }
 
+    /// Every gesture this profile has, from a double tap up to its highest tap
+    /// count. A double and a triple tap are always there.
+    public var gestures: [TapGesture] {
+        (2...max(3, moreTapActions?.keys.max() ?? 3)).compactMap(TapGesture.init(rawValue:))
+    }
+
     public func action(for gesture: TapGesture) -> ZoneActionConfiguration {
-        (gesture == .double ? doubleTapAction : tripleTapAction) ?? ZoneActionConfiguration(kind: .none)
+        let action: ZoneActionConfiguration?
+        switch gesture {
+        case .double: action = doubleTapAction
+        case .triple: action = tripleTapAction
+        default: action = moreTapActions?[gesture.rawValue]
+        }
+        return action ?? ZoneActionConfiguration(kind: .none)
     }
 
     public mutating func setAction(_ action: ZoneActionConfiguration, for gesture: TapGesture) {
         switch gesture {
         case .double: doubleTapAction = action
         case .triple: tripleTapAction = action
+        default: moreTapActions = (moreTapActions ?? [:]).merging([gesture.rawValue: action]) { $1 }
         }
+    }
+
+    /// Adds a gesture with one more tap than the highest so far.
+    public mutating func addGesture() {
+        guard let last = gestures.last, let next = TapGesture(rawValue: last.rawValue + 1) else { return }
+        setAction(ZoneActionConfiguration(), for: next)
+    }
+
+    /// Removes the gesture with the most taps. Double and triple taps stay.
+    public mutating func removeLastGesture() {
+        guard let last = moreTapActions?.keys.max() else { return }
+        moreTapActions?[last] = nil
     }
 }
 

@@ -128,6 +128,23 @@ final class LocalActionPlannerTests: XCTestCase {
         )
     }
 
+    func testKeyboardShortcutNeedsARecordedKeyAndMediaControlDefaultsToPlayOrPause() {
+        // The label alone isn't a shortcut; the key code is.
+        XCTAssertNil(LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .pressKeys, text: "⌘K")))
+        XCTAssertEqual(
+            LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .pressKeys, keyCode: 40, keyModifiers: 0x100000)),
+            .pressKeys(keyCode: 40, modifiers: 0x100000)
+        )
+        XCTAssertEqual(
+            LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .mediaKey, text: MediaKey.mute.rawValue)),
+            .pressMediaKey(.mute)
+        )
+        XCTAssertEqual(
+            LocalActionPlanner.command(for: ZoneActionConfiguration(kind: .mediaKey, text: "leftover text")),
+            .pressMediaKey(.playPause)
+        )
+    }
+
     func testAutomaticDispatchRequiresAcceptedDecisionOnDesk() {
         let accepted = ClassificationDecision(
             zone: .rightTop,

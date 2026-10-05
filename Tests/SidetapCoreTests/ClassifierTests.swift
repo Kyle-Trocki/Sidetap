@@ -171,6 +171,7 @@ final class ClassifierTests: XCTestCase {
         XCTAssertEqual(counter.add(at: 21.2), 1)
         XCTAssertEqual(TapGesture(rawValue: 2), .double)
         XCTAssertNil(TapGesture(rawValue: 1))
+        XCTAssertEqual(TapGesture(rawValue: 5)?.displayName, "5 taps")
     }
 
     func testLeaveOneOutEvaluationUsesEverySample() throws {

@@ -36,7 +36,7 @@ References were reviewed on July 16, 2026.
 
 - **Desk:** the current gesture, each gesture's assigned action, one compact result strip, and no-profile onboarding in place.
 - **Calibration:** one target at a time on a map of two continuous two-zone rails around one MacBook silhouette. Individual zones are not rendered as four floating cards. Beginning setup is the explicit capture intent; Sidetap then collects ten clean taps spread across the highlighted area, disarms during each move, and automatically arms the next zone after a short transition. A visible Arm control remains available after a pause. A measured consistency check can redo the weakest zone before saving, and Talking rejection capture is surfaced as the recommended final step.
-- **Actions:** a two-row editor, one row for a double tap and one for a triple tap. Native pickers progressively reveal only the fields needed for the selected action, including Shortcuts, app/file bookmarks, shell commands, and screenshot destinations.
+- **Actions:** an editor with one row for each gesture: a double tap, a triple tap, and any gesture with more taps that the user adds. Native pickers progressively reveal only the fields needed for the selected action, including Shortcuts, app/file bookmarks, shell commands, recorded keyboard shortcuts, media keys, and screenshot destinations.
 - **Diagnostics:** factual hardware and signal details in a form, with sensing comparisons disclosed on demand.
 - **Zone Accuracy Test:** a focused run of 60 double taps followed by a plain results table and four-by-four confusion matrix.
 

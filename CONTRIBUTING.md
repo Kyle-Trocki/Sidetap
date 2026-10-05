@@ -2,7 +2,7 @@
 
 Sidetap is a research prototype, so the easiest contributions to review are ones
 that keep the DSP test suite green and respect the design: actions run on
-double and triple taps, and calibration uses four zones.
+gestures of two or more taps, and calibration uses four zones.
 
 ## Setup
 
@@ -38,7 +38,7 @@ Run the unit suite with the same invocation, replacing `build` with `test`.
 
 To run the app itself, install a signed build as described in the next
 section. The `CODE_SIGNING_ALLOWED=NO` bundle lacks the audio-input entitlement
-and should not be launched (see the README's Build section).
+and should not be launched.
 
 ## Install a local build
 
@@ -155,6 +155,6 @@ the replay denominator. For future WAV replay investigations, enable **Retain
 
 - Keep changes small, and run the unit suite before opening a PR.
 - The four-zone calibration topology is intentional. Six- and nine-zone layouts were tried
-  and abandoned (see the README), so PRs should not reopen that decision.
+  and abandoned, so PRs should not reopen that decision.
 - DSP changes should preserve the behavior pinned by `Tests/SidetapCoreTests`
   unless the PR is explicitly about changing that behavior.

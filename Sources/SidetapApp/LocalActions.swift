@@ -1,6 +1,7 @@
 import AppKit
 import AVFoundation
 import Foundation
+import IOKit.hidsystem
 import SidetapCore
 
 enum LocalActionDispatchError: Error, LocalizedError {
@@ -19,7 +20,7 @@ enum LocalActionDispatchError: Error, LocalizedError {
         case .pasteboardWriteFailed:
             return "Sidetap could not write the assigned text to the pasteboard."
         case .accessibilityRequired:
-            return "Paste text needs Accessibility access to press ⌘V for you. Turn on Sidetap in System Settings › Privacy & Security › Accessibility, then try again."
+            return "This action needs Accessibility access to press keys for you. Turn on Sidetap in System Settings › Privacy & Security › Accessibility, then try again."
         case .openFailed(let destination):
             return "macOS could not open \(destination)."
         case .applicationBookmarkInvalid:
@@ -51,11 +52,7 @@ final class LocalActionDispatcher {
                 throw LocalActionDispatchError.pasteboardWriteFailed
             }
         case .pasteText(let text):
-            // Sending ⌘V to another app needs Accessibility access. The request
-            // adds Sidetap to that list in System Settings the first time.
-            guard CGPreflightPostEventAccess() || CGRequestPostEventAccess() else {
-                throw LocalActionDispatchError.accessibilityRequired
-            }
+            try requirePostEventAccess()
             let pasteboard = NSPasteboard.general
             // With assigned text, borrow the pasteboard for it; with none, paste what's there.
             var previousItems: [NSPasteboardItem]?
@@ -72,12 +69,7 @@ final class LocalActionDispatcher {
                     throw LocalActionDispatchError.pasteboardWriteFailed
                 }
             }
-            let source = CGEventSource(stateID: .combinedSessionState)
-            for keyDown in [true, false] {
-                let event = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: keyDown)  // V
-                event?.flags = .maskCommand
-                event?.post(tap: .cgSessionEventTap)
-            }
+            pressKey(0x09, flags: .maskCommand)  // V
             if let previousItems {
                 // Put the previous clipboard back once the frontmost app has read the text.
                 // ponytail: a fixed 0.5 s wait; an app slower than that pastes the old clipboard.
@@ -138,6 +130,52 @@ final class LocalActionDispatcher {
                 name: interactive ? "Selection capture" : "Screenshot",
                 onSuccess: destination == .both ? copySavedImage : nil
             )
+        case .pressKeys(let keyCode, let modifiers):
+            try requirePostEventAccess()
+            pressKey(keyCode, flags: CGEventFlags(rawValue: modifiers))
+        case .pressMediaKey(let key):
+            try requirePostEventAccess()
+            let keyType: Int32
+            switch key {
+            case .playPause: keyType = NX_KEYTYPE_PLAY
+            case .nextTrack: keyType = NX_KEYTYPE_NEXT
+            case .previousTrack: keyType = NX_KEYTYPE_PREVIOUS
+            case .volumeUp: keyType = NX_KEYTYPE_SOUND_UP
+            case .volumeDown: keyType = NX_KEYTYPE_SOUND_DOWN
+            case .mute: keyType = NX_KEYTYPE_MUTE
+            }
+            // A media key isn't an ordinary key code. The keyboard sends it as a
+            // system-defined event that carries the key and its state in data1.
+            for state in [0xA, 0xB] {  // Key down, then key up.
+                NSEvent.otherEvent(
+                    with: .systemDefined,
+                    location: .zero,
+                    modifierFlags: NSEvent.ModifierFlags(rawValue: UInt(state << 8)),
+                    timestamp: 0,
+                    windowNumber: 0,
+                    context: nil,
+                    subtype: 8,
+                    data1: Int(keyType) << 16 | state << 8,
+                    data2: -1
+                )?.cgEvent?.post(tap: .cghidEventTap)
+            }
+        }
+    }
+
+    /// Sending keys to another app needs Accessibility access. The request adds
+    /// Sidetap to that list in System Settings the first time.
+    private func requirePostEventAccess() throws {
+        guard CGPreflightPostEventAccess() || CGRequestPostEventAccess() else {
+            throw LocalActionDispatchError.accessibilityRequired
+        }
+    }
+
+    private func pressKey(_ keyCode: CGKeyCode, flags: CGEventFlags) {
+        let source = CGEventSource(stateID: .combinedSessionState)
+        for keyDown in [true, false] {
+            let event = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: keyDown)
+            event?.flags = flags
+            event?.post(tap: .cgSessionEventTap)
         }
     }
 

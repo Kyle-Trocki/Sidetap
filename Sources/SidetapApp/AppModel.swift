@@ -462,6 +462,7 @@ final class AppModel: ObservableObject {
             if let oldProfile { profile.createdAt = oldProfile.createdAt }
             profile.doubleTapAction = oldProfile?.doubleTapAction
             profile.tripleTapAction = oldProfile?.tripleTapAction
+            profile.moreTapActions = oldProfile?.moreTapActions
             // A new desk set up while location switching is on belongs to this location.
             profile.location = oldProfile.map(\.location) ?? latestLocation.map(ProfileLocation.init)
             guard let profileStore else { throw SidetapStorageError.unavailable("Desk profile") }
@@ -650,9 +651,22 @@ final class AppModel: ObservableObject {
 
     @discardableResult
     func updateAction(for gesture: TapGesture, action: ZoneActionConfiguration) -> Bool {
+        updateSelectedProfile { $0.setAction(action, for: gesture) }
+    }
+
+    func addGesture() {
+        updateSelectedProfile { $0.addGesture() }
+    }
+
+    func removeLastGesture() {
+        updateSelectedProfile { $0.removeLastGesture() }
+    }
+
+    @discardableResult
+    private func updateSelectedProfile(_ change: (inout SidetapProfile) -> Void) -> Bool {
         guard let profileIndex = profiles.firstIndex(where: { $0.id == selectedProfileID }) else { return false }
         var updatedProfile = profiles[profileIndex]
-        updatedProfile.setAction(action, for: gesture)
+        change(&updatedProfile)
         do {
             guard let profileStore else { throw SidetapStorageError.unavailable("Desk profile") }
             try profileStore.save(updatedProfile)
@@ -856,12 +870,15 @@ final class AppModel: ObservableObject {
         }
         let count = gesture.add(at: observation.eventHostTimeSeconds)
         gestureTask?.cancel()
-        guard count < TapGesture.triple.rawValue else {
+        // Only the gesture with the most taps can run at once. Any other has to
+        // wait in case one more tap follows.
+        guard count < (profile.gestures.last?.rawValue ?? 0) else {
             completeGesture()
             return
         }
         pendingTapCount = count
-        statusMessage = count == 1 ? "Tap heard • tap again" : "Double tap • waiting in case of a third tap"
+        statusMessage = TapGesture(rawValue: count).map { "\($0.displayName) • waiting in case of another tap" }
+            ?? "Tap heard • tap again"
         // The next tap can start up to maximumGap after this one, and a tap
         // takes about 0.25 s to be detected (measured: 213 ms at the 90th percentile).
         let deadline = observation.eventHostTimeSeconds + TapGestureCounter.maximumGap + 0.25

@@ -12,6 +12,8 @@ public enum LocalActionCommand: Equatable, Sendable {
     case openItem(bookmarkData: Data)
     case runShellCommand(String)
     case takeScreenshot(interactive: Bool, destination: ScreenshotDestination)
+    case pressKeys(keyCode: UInt16, modifiers: UInt64)
+    case pressMediaKey(MediaKey)
 }
 
 public enum LocalActionPlanner {
@@ -71,6 +73,13 @@ public enum LocalActionPlanner {
                 interactive: action.kind == .screenshotSelection,
                 destination: ScreenshotDestination(rawValue: action.text) ?? .desktop
             )
+
+        case .pressKeys:
+            guard let keyCode = action.keyCode else { return nil }
+            return .pressKeys(keyCode: keyCode, modifiers: action.keyModifiers ?? 0)
+
+        case .mediaKey:
+            return .pressMediaKey(MediaKey(rawValue: action.text) ?? .playPause)
         }
     }
 

@@ -40,7 +40,7 @@ struct LiveSurfaceView: View {
             Text(gestureTitle)
                 .font(.largeTitle.weight(.semibold))
             VStack(spacing: 10) {
-                ForEach(TapGesture.allCases) { gesture in
+                ForEach(model.selectedProfile?.gestures ?? []) { gesture in
                     HStack {
                         Text(gesture.displayName)
                             .fontWeight(model.lastGesture == gesture ? .semibold : .regular)
@@ -58,9 +58,9 @@ struct LiveSurfaceView: View {
 
     private var gestureTitle: String {
         switch model.pendingTapCount {
+        case 0: return model.lastGesture?.displayName ?? "Tap twice or more"
         case 1: return "1 tap…"
-        case 2: return "2 taps…"
-        default: return model.lastGesture?.displayName ?? "Tap twice or three times"
+        default: return "\(model.pendingTapCount) taps…"
         }
     }
 

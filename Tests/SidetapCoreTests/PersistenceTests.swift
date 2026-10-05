@@ -80,6 +80,10 @@ final class PersistenceTests: XCTestCase {
 
         var withGesture = home
         withGesture.setAction(ZoneActionConfiguration(kind: .pasteText), for: .double)
+        withGesture.addGesture()
+        withGesture.addGesture()
+        let fiveTaps = try XCTUnwrap(TapGesture(rawValue: 5))
+        withGesture.setAction(ZoneActionConfiguration(kind: .mediaKey), for: fiveTaps)
         try store.save(withGesture)
 
         let loaded = try store.loadAll()
@@ -87,6 +91,13 @@ final class PersistenceTests: XCTestCase {
         XCTAssertEqual(loaded.first { $0.id == home.id }?.action(for: .double).kind, .pasteText)
         XCTAssertEqual(loaded.first { $0.id == home.id }?.action(for: .triple).kind, ZoneActionKind.none)
         XCTAssertEqual(loaded.first { $0.id == work.id }?.action(for: .double).kind, ZoneActionKind.none)
+        // Added gestures come back too. A profile without any has a double and a triple tap.
+        var reloaded = try XCTUnwrap(loaded.first { $0.id == home.id })
+        XCTAssertEqual(reloaded.gestures.map(\.rawValue), [2, 3, 4, 5])
+        XCTAssertEqual(reloaded.action(for: fiveTaps).kind, .mediaKey)
+        reloaded.removeLastGesture()
+        XCTAssertEqual(reloaded.gestures.map(\.rawValue), [2, 3, 4])
+        XCTAssertEqual(loaded.first { $0.id == work.id }?.gestures, [.double, .triple])
         XCTAssertEqual(loaded.first { $0.id == home.id }?.location, home.location)
         XCTAssertNil(loaded.first { $0.id == unpinned.id }?.location)
 
