@@ -18,7 +18,7 @@ Each gesture runs one action that you choose:
 - Press a media key: play or pause, next or previous track, volume up or down, or mute.
 - Take a screenshot of the full screen or a selected area, saved to the Desktop, the clipboard, or both.
 
-Until you assign an action, a gesture only shows in the app. Shell commands run without confirmation and inside Sidetap's sandbox, so use commands that are safe to repeat. For anything that the sandbox blocks or that takes several steps, run a Shortcut.
+A new setup starts with a double tap that pastes the clipboard and a triple tap that takes a screenshot for the Desktop and the clipboard. A gesture that you add only shows in the app until you assign an action. Shell commands run without confirmation and inside Sidetap's sandbox, so use commands that are safe to repeat. For anything that the sandbox blocks or that takes several steps, run a Shortcut.
 
 The first time an action pastes text, presses keys, or takes a screenshot, macOS might ask for Accessibility or Screen Recording access.
 
@@ -41,23 +41,22 @@ The script installs Sidetap in `~/Applications` and opens it. Because every buil
 ## Set up Sidetap
 
 1. Put the MacBook where it stays during use. If you move it later, recalibrate. Recalibrating keeps your gestures and actions.
-1. In **Calibration**, click **Begin Calibration**. macOS asks for microphone access.
+1. Click **Begin Calibration**. macOS asks for microphone access.
 1. Follow the prompts to double-tap eight times, and then triple-tap eight times. Tap where and how you will in everyday use, and pause for a second after each gesture.
-1. Click **Save and Set Actions**, and then choose an action for **Double tap** and for **Triple tap**.
-1. Click **Desk**. Actions run only while **Desk** is selected.
+1. Click **Save**. To change what a gesture does, choose another action for it.
 
 ## Gestures
 
 Calibration teaches Sidetap two things: how your taps sound and how fast you tap. Every gesture uses both, so a gesture that you add needs no calibration of its own.
 
-Sidetap starts with a double tap and a triple tap. To add a gesture with one more tap, click **Add Gesture** in **Actions**. You can add as many as you want.
+Sidetap starts with a double tap and a triple tap. To add a gesture with one more tap, click **Add Gesture**. You can add as many as you want.
 
 - Taps that are no more than 0.45 seconds apart belong to one gesture. If you calibrate at a slower pace, Sidetap allows a longer pause, up to 0.8 seconds.
 - The gesture with the most taps runs its action at its last tap.
 - Any other gesture runs its action when no further tap can follow, which is about 0.7 seconds after its last tap at the default pace.
 - A single tap does nothing.
 
-To avoid false triggers, Sidetap ignores a tap within 0.3 seconds of a key press or a click, and it runs no actions while the room is too loud.
+To avoid false triggers, Sidetap ignores a tap within 0.3 seconds of a key press or a click, and it runs no actions while the room is too loud, during a calibration, or while **Diagnostics** is open. While you type an action's text, Sidetap holds that gesture until you press <kbd>Return</kbd>, click outside the field, or switch to another app.
 
 ## Privacy
 

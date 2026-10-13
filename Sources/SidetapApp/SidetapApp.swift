@@ -2,6 +2,20 @@ import AppKit
 import SwiftUI
 
 final class SidetapAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // macOS leaves the cursor in a text field when you click elsewhere in its
+        // window. Here, a click anywhere outside that field gives the cursor up.
+        _ = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
+            // A field that is being edited has a text view as the first responder.
+            // Hit-testing can't find it: SwiftUI's hosting view answers for its controls.
+            if let editor = event.window?.firstResponder as? NSText,
+               !editor.convert(editor.bounds, to: nil).contains(event.locationInWindow) {
+                event.window?.makeFirstResponder(nil)
+            }
+            return event
+        }
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
     }
@@ -15,13 +29,13 @@ struct SidetapApp: App {
     var body: some Scene {
         Window("Sidetap", id: "main") {
             RootView(model: model)
-                .frame(minWidth: 1_020, minHeight: 680)
+                .frame(minWidth: 840, minHeight: 680)
                 .task { await model.activateOnLaunch() }
         }
-        .defaultSize(width: 1_180, height: 760)
+        .defaultSize(width: 980, height: 760)
         .commands {
             CommandMenu("Sidetap") {
-                if model.profile == nil && model.guidedSection == nil {
+                if model.profile == nil && model.calibrationSession == nil {
                     Button("Set Up") {
                         model.openSetup()
                     }
@@ -36,7 +50,7 @@ struct SidetapApp: App {
                     model.prepareRecalibration()
                 }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
-                .disabled(model.profile == nil || model.guidedSection != nil)
+                .disabled(model.profile == nil || model.calibrationSession != nil)
             }
         }
     }

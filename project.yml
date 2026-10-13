@@ -79,8 +79,6 @@ targets:
     platform: macOS
     sources:
       - path: Tests/SidetapAppTests
-      - path: Sources/SidetapApp/AppSection.swift
-      - path: Sources/SidetapApp/GuidedNavigationGate.swift
       - path: Sources/SidetapApp/SensingStrategyResolver.swift
     dependencies:
       - target: SidetapCore

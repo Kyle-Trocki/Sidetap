@@ -14,14 +14,24 @@ enum SidetapStorageError: Error, LocalizedError {
     }
 }
 
+/// What takes over the window in place of the main screen.
+enum AppFlow {
+    case calibration
+    case diagnostics
+}
+
 @MainActor
 final class AppModel: ObservableObject {
-    @Published var section: AppSection = .live
+    /// The flow that is open, or nil while the main screen shows.
+    @Published var flow: AppFlow?
     /// The saved calibration and actions, or nil before the first calibration.
     @Published private(set) var profile: SidetapProfile?
     @Published private(set) var lastDecision: ClassificationDecision?
     @Published private(set) var lastGesture: TapGesture?
     @Published private(set) var pendingTapCount = 0
+    /// The gesture whose action text is being typed, if any. Sidetap holds that
+    /// gesture's action meanwhile, so a half-typed command can't run.
+    @Published var editingGesture: TapGesture?
     @Published private(set) var statusMessage = "Ready to learn your taps"
     @Published private(set) var calibrationSession: CalibrationSession?
     @Published private(set) var diagnosticCaptures: [DiagnosticCaptureRecord] = []
@@ -92,14 +102,6 @@ final class AppModel: ObservableObject {
         }.store(in: &cancellables)
     }
 
-    var guidedSection: AppSection? {
-        GuidedNavigationGate.guidedSection(calibrationActive: calibrationSession != nil)
-    }
-
-    func canNavigate(to candidate: AppSection) -> Bool {
-        GuidedNavigationGate.canNavigate(to: candidate, guidedSection: guidedSection)
-    }
-
     var targetStrategy: SensingStrategy {
         SensingStrategyResolver.resolve(
             calibration: calibrationSession?.strategy,
@@ -125,7 +127,7 @@ final class AppModel: ObservableObject {
 
     func activateOnLaunch() async {
         guard profile != nil else {
-            section = .calibrate
+            flow = .calibration
             statusMessage = "Setup required • calibrate your taps"
             return
         }
@@ -148,7 +150,7 @@ final class AppModel: ObservableObject {
             disarmAllCaptureIntents()
             audio.stop()
             statusMessage = "Paused"
-        } else if profile == nil && guidedSection == nil {
+        } else if profile == nil && calibrationSession == nil {
             openSetup()
         } else {
             pausedByUser = false
@@ -157,8 +159,8 @@ final class AppModel: ObservableObject {
     }
 
     func openSetup() {
-        guard guidedSection == nil else { return }
-        section = .calibrate
+        guard calibrationSession == nil else { return }
+        flow = .calibration
         statusMessage = "Setup required • calibrate your taps"
     }
 
@@ -170,7 +172,7 @@ final class AppModel: ObservableObject {
         calibrationSession = CalibrationSession(strategy: strategy)
         calibrationGuidance = nil
         calibrationAcceptAfter = Date().addingTimeInterval(0.5)
-        section = .calibrate
+        flow = .calibration
         statusMessage = "Calibration • \(TapGesture.double.displayName)"
         Task {
             do {
@@ -186,8 +188,8 @@ final class AppModel: ObservableObject {
     }
 
     func prepareRecalibration() {
-        guard guidedSection == nil else { return }
-        section = .calibrate
+        guard calibrationSession == nil else { return }
+        flow = .calibration
     }
 
     func cancelCalibration() {
@@ -195,6 +197,7 @@ final class AppModel: ObservableObject {
         calibrationAttemptTask?.cancel()
         calibrationSession = nil
         calibrationGuidance = nil
+        flow = nil
         statusMessage = "Calibration cancelled"
         Task {
             do { try await reconfigureListeningAudio(to: targetStrategy) }
@@ -279,18 +282,18 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func finishCalibration(openActions: Bool = false) {
+    func finishCalibration() {
         guard let session = calibrationSession, session.gesturesComplete else { return }
         do {
             let classifier = try TrainedTapClassifier.train(
                 gestures: session.gestures.map(\.taps),
                 negativeExamples: session.negativeSamples.map(\.feature)
             )
-            // Recalibrating keeps the gestures and their actions.
+            // Recalibrating keeps the gestures and their actions. A first calibration starts with the defaults.
             let calibrated = SidetapProfile(
                 classifier: classifier,
                 maximumTapGap: session.maximumTapGap,
-                actions: profile?.actions ?? [:]
+                actions: profile?.actions ?? SidetapProfile.defaultActions
             )
             guard let profileStore else { throw SidetapStorageError.unavailable("Calibration") }
             try profileStore.save(calibrated)
@@ -298,7 +301,7 @@ final class AppModel: ObservableObject {
             calibrationArmTask?.cancel()
             calibrationSession = nil
             calibrationGuidance = nil
-            section = openActions ? .actions : .live
+            flow = nil
             statusMessage = "Calibration saved • listening"
             Task {
                 do { try await reconfigureListeningAudio(to: calibrated.sensingStrategy) }
@@ -407,7 +410,7 @@ final class AppModel: ObservableObject {
             return
         }
 
-        if section == .diagnostics {
+        if flow == .diagnostics {
             if diagnosticCaptureArmed {
                 let capture = DiagnosticCaptureRecord(
                     label: diagnosticLabel,
@@ -470,8 +473,8 @@ final class AppModel: ObservableObject {
             return
         }
         lastGesture = completed
-        guard section == .live else {
-            statusMessage = "\(completed.displayName) • actions paused outside Desk"
+        guard completed != editingGesture else {
+            statusMessage = "\(completed.displayName) • held while you edit its action"
             return
         }
         statusMessage = completed.displayName

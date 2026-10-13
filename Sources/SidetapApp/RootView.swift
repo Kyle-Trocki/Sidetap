@@ -1,3 +1,4 @@
+import AppKit
 import SidetapCore
 import SwiftUI
 
@@ -5,69 +6,52 @@ struct RootView: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
-        NavigationSplitView {
-            VStack(spacing: 0) {
-                List(selection: $model.section) {
-                    Section {
-                        ForEach(AppSection.primary) { navigationRow($0) }
-                    }
-
-                    Section("Advanced") {
-                        ForEach(AppSection.advanced) { navigationRow($0) }
-                    }
-                }
-                .listStyle(.sidebar)
-
-                Divider()
-
-                microphoneFooter
-                    .padding(12)
+        content
+            .toolbar { toolbar }
+            .safeAreaInset(edge: .bottom) {
+                statusBar
             }
-            .navigationTitle("Sidetap")
-            .navigationSplitViewColumnWidth(min: 176, ideal: 196, max: 230)
-        } detail: {
-            content
-                .navigationTitle(model.section.title)
-                .toolbar { toolbar }
-                .safeAreaInset(edge: .bottom) {
-                    statusBar
-                }
-        }
-        .navigationSplitViewStyle(.balanced)
-        .alert("Sidetap", isPresented: Binding(
-            get: { model.errorMessage != nil },
-            set: { if !$0 { model.errorMessage = nil } }
-        )) {
-            Button("OK", role: .cancel) { model.errorMessage = nil }
-        } message: {
-            Text(model.errorMessage ?? "Unknown error")
-        }
-    }
-
-    private func navigationRow(_ section: AppSection) -> some View {
-        Label(section.title, systemImage: section.symbol)
-            .tag(section)
-            .disabled(!model.canNavigate(to: section))
+            .alert("Sidetap", isPresented: Binding(
+                get: { model.errorMessage != nil },
+                set: { if !$0 { model.errorMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) { model.errorMessage = nil }
+            } message: {
+                Text(model.errorMessage ?? "Unknown error")
+            }
+            // macOS hands the cursor to the first text field when the window becomes
+            // main. Nothing is being edited then, so no field has it until you click one.
+            .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeMainNotification)) { note in
+                (note.object as? NSWindow)?.makeFirstResponder(nil)
+            }
     }
 
     @ViewBuilder
     private var content: some View {
-        switch model.section {
-        case .live:
+        switch model.flow {
+        case nil:
             LiveSurfaceView(model: model)
-        case .calibrate:
+        case .calibration:
             CalibrationView(model: model)
         case .diagnostics:
             DiagnosticsView(model: model)
-        case .actions:
-            ActionsView(model: model)
         }
     }
 
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
-            if model.profile == nil && model.guidedSection == nil {
+            Toggle(isOn: Binding(
+                get: { model.flow == .diagnostics },
+                set: { model.flow = $0 ? .diagnostics : nil }
+            )) {
+                Label("Diagnostics", systemImage: "waveform.path.ecg")
+            }
+            .help("Inspect the microphone path and capture labeled examples")
+            // Calibration ends only through its own Save and Cancel.
+            .disabled(model.flow == .calibration)
+
+            if model.profile == nil && model.calibrationSession == nil {
                 Button(action: model.openSetup) {
                     Label("Set Up", systemImage: "scope")
                 }
@@ -84,50 +68,14 @@ struct RootView: View {
         }
     }
 
-    private var microphoneFooter: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Image(systemName: microphoneSymbol)
-                    .foregroundStyle(model.audio.isListening ? .red : .secondary)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(microphoneTitle)
-                        .font(.caption.weight(.medium))
-                    Text(microphoneDetail)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 0)
-            }
-            ProgressView(value: model.audio.liveLevel)
-                .progressViewStyle(.linear)
-                .tint(model.audio.isListening ? .blue : .gray)
-        }
-    }
-
-    private var needsInitialSetup: Bool {
-        model.profile == nil && model.calibrationSession == nil
-    }
-
-    private var microphoneSymbol: String {
-        if needsInitialSetup { return "scope" }
-        return model.audio.isListening ? "mic.fill" : "mic.slash"
-    }
-
-    private var microphoneTitle: String {
-        if needsInitialSetup { return "Setup required" }
-        return model.audio.isListening ? "Microphone active" : "Microphone off"
-    }
-
-    private var microphoneDetail: String {
-        if needsInitialSetup { return "Calibrate your taps first" }
-        return model.audio.isListening ? "Processed on this Mac" : "No audio capture"
-    }
-
     private var statusBar: some View {
         HStack(spacing: 8) {
-            Circle()
-                .fill(model.audio.isListening ? Color.green : Color.secondary)
-                .frame(width: 6, height: 6)
+            Image(systemName: model.audio.isListening ? "mic.fill" : "mic.slash")
+                .foregroundStyle(model.audio.isListening ? .red : .secondary)
+                .accessibilityLabel(model.audio.isListening ? "Microphone active" : "Microphone off")
+            ProgressView(value: model.audio.liveLevel)
+                .frame(width: 56)
+                .accessibilityLabel("Microphone level")
             Text(model.statusMessage)
                 .font(.caption)
                 .foregroundStyle(.secondary)

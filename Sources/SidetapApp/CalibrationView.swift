@@ -51,11 +51,19 @@ struct CalibrationView: View {
                 }
 
                 Section {
-                    Button(model.profile == nil ? "Begin Calibration" : "Recalibrate") {
-                        model.beginCalibration()
+                    HStack {
+                        Button(model.profile == nil ? "Begin Calibration" : "Recalibrate") {
+                            model.beginCalibration()
+                        }
+                        .sidetapPrimaryButton()
+                        .controlSize(.large)
+
+                        Spacer()
+
+                        Button("Cancel", role: .cancel) {
+                            model.flow = nil
+                        }
                     }
-                    .sidetapPrimaryButton()
-                    .controlSize(.large)
                 }
             }
             .formStyle(.grouped)
@@ -197,16 +205,11 @@ struct CalibrationView: View {
             .font(.callout)
 
             HStack {
-                Button("Save and Set Actions") {
-                    model.finishCalibration(openActions: true)
+                Button("Save") {
+                    model.finishCalibration()
                 }
                 .sidetapPrimaryButton()
                 .controlSize(.large)
-
-                Button("Save for Later") {
-                    model.finishCalibration()
-                }
-                .sidetapSecondaryButton()
 
                 Spacer()
 
