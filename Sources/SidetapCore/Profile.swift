@@ -142,6 +142,16 @@ public struct SidetapProfile: Codable, Equatable, Sendable {
     /// single one. Earlier files are skipped and need recalibrating.
     public static let currentVersion = 4
 
+    /// What a first calibration starts with: a double tap pastes the clipboard,
+    /// and a triple tap takes a screenshot for the Desktop and the clipboard.
+    public static let defaultActions: [Int: ActionConfiguration] = [
+        TapGesture.double.rawValue: ActionConfiguration(kind: .pasteText),
+        TapGesture.triple.rawValue: ActionConfiguration(
+            kind: .screenshotClipboard,
+            text: ScreenshotDestination.both.rawValue
+        )
+    ]
+
     public var version: Int
     public var classifier: TrainedTapClassifier
     /// The longest pause, in seconds, between two taps of one gesture. Learned

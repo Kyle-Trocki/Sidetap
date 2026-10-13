@@ -3,81 +3,76 @@ import SidetapCore
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// The editor on the main screen with one row for each gesture.
 struct ActionsView: View {
     @ObservedObject var model: AppModel
+    let profile: SidetapProfile
 
     var body: some View {
-        Group {
-            if let profile = model.profile {
-                VStack(alignment: .leading, spacing: 18) {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("Assign actions")
-                            .font(.title.weight(.semibold))
-                        Text("Tap two or more times anywhere on the desk to run an action. Changes save automatically.")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Form {
-                        Section("Gestures") {
-                            ForEach(profile.gestures) { gesture in
-                                ActionRow(
-                                    title: gesture.displayName,
-                                    action: profile.action(for: gesture),
-                                    onChange: { action in
-                                        model.updateAction(for: gesture, action: action)
-                                    },
-                                    onTest: model.testAction,
-                                    onError: { error in
-                                        model.errorMessage = "The action could not be assigned. \(error.localizedDescription)"
-                                    }
-                                )
-                                .id(gesture.rawValue)
+        Form {
+            Section("Gestures") {
+                ForEach(profile.gestures) { gesture in
+                    ActionRow(
+                        title: gesture.displayName,
+                        isLastGesture: model.lastGesture == gesture,
+                        action: profile.action(for: gesture),
+                        onChange: { action in
+                            model.updateAction(for: gesture, action: action)
+                        },
+                        onTest: model.testAction,
+                        onError: { error in
+                            model.errorMessage = "The action could not be assigned. \(error.localizedDescription)"
+                        },
+                        onEditingText: { editing in
+                            if editing {
+                                model.editingGesture = gesture
+                            } else if model.editingGesture == gesture {
+                                model.editingGesture = nil
                             }
-                            HStack {
-                                Button("Add Gesture", systemImage: "plus") { model.addGesture() }
-                                if let last = profile.gestures.last, last.rawValue > TapGesture.triple.rawValue {
-                                    Button("Remove \(last.displayName)", role: .destructive) { model.removeLastGesture() }
-                                }
-                            }
-                            .buttonStyle(.borderless)
                         }
-
-                        Section("Automation") {
-                            Label("Paste text, keyboard shortcuts, and media controls press keys for you, so macOS asks for Accessibility access the first time.", systemImage: "keyboard")
-                            Label("Use Run Shortcut for multi-step workflows such as opening Claude and starting a voice workflow.", systemImage: "command")
-                            Label("Shell commands run through /bin/zsh with Sidetap's current macOS permissions.", systemImage: "terminal")
-                            Label("Screenshot actions save to the Desktop, copy to the clipboard, or both, and may request Screen Recording access.", systemImage: "camera.viewfinder")
-                        }
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    )
+                    .id(gesture.rawValue)
+                }
+                HStack {
+                    Button("Add Gesture", systemImage: "plus") { model.addGesture() }
+                    if let last = profile.gestures.last, last.rawValue > TapGesture.triple.rawValue {
+                        Button("Remove \(last.displayName)", role: .destructive) { model.removeLastGesture() }
                     }
-                    .formStyle(.grouped)
                 }
-                .frame(maxWidth: 780, alignment: .leading)
-                .padding(36)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ContentUnavailableView {
-                    Label("Not Calibrated", systemImage: "macbook")
-                } description: {
-                    Text("Calibrate your taps before you assign actions.")
-                } actions: {
-                    Button("Open Calibration") { model.section = .calibrate }
-                        .sidetapPrimaryButton()
-                }
+                .buttonStyle(.borderless)
             }
+
+            Section("Automation") {
+                Label("Paste text, keyboard shortcuts, and media controls press keys for you, so macOS asks for Accessibility access the first time.", systemImage: "keyboard")
+                Label("Use Run Shortcut for multi-step workflows such as opening Claude and starting a voice workflow.", systemImage: "command")
+                Label("Shell commands run through /bin/zsh with Sidetap's current macOS permissions.", systemImage: "terminal")
+                Label("Screenshot actions save to the Desktop, copy to the clipboard, or both, and may request Screen Recording access.", systemImage: "camera.viewfinder")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
-        .background(SidetapTheme.background)
+        .formStyle(.grouped)
+        // The form sits between the header and the result strip, so it takes the window's background.
+        .scrollContentBackground(.hidden)
+        // A field keeps the cursor when you switch apps. Typing a command and then
+        // leaving to try it has to run it, so leaving Sidetap ends the edit.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+            model.editingGesture = nil
+        }
     }
 }
 
 private struct ActionRow: View {
     let title: String
+    /// Whether this row's gesture is the one that Sidetap heard last.
+    let isLastGesture: Bool
     let onChange: (ActionConfiguration) -> Bool
     let onTest: (ActionConfiguration) -> Void
     let onError: (Error) -> Void
+    /// Called with true when typing starts in this row's text field, and with false when the edit ends.
+    let onEditingText: (Bool) -> Void
     @State private var action: ActionConfiguration
+    @FocusState private var isTextFocused: Bool
     @State private var isRevertingFailedSave = false
     /// The key monitor that is installed while a keyboard shortcut is being recorded.
     @State private var keyMonitor: Any?
@@ -86,54 +81,67 @@ private struct ActionRow: View {
 
     init(
         title: String,
+        isLastGesture: Bool,
         action: ActionConfiguration,
         onChange: @escaping (ActionConfiguration) -> Bool,
         onTest: @escaping (ActionConfiguration) -> Void,
-        onError: @escaping (Error) -> Void
+        onError: @escaping (Error) -> Void,
+        onEditingText: @escaping (Bool) -> Void
     ) {
         self.title = title
+        self.isLastGesture = isLastGesture
         self.onChange = onChange
         self.onTest = onTest
         self.onError = onError
+        self.onEditingText = onEditingText
         _action = State(initialValue: action)
     }
 
     var body: some View {
-        LabeledContent {
-            HStack(spacing: 12) {
-                Picker("Action", selection: $action.kind) {
-                    ForEach(ActionKind.allCases) { kind in
-                        Text(kind.displayName).tag(kind)
-                    }
-                }
-                .labelsHidden()
-                .frame(width: 190)
-                .accessibilityLabel("Action for \(title)")
-
-                detailControl
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                Button("Test", systemImage: "play.fill") {
-                    onTest(action)
-                }
-                .labelStyle(.iconOnly)
-                .buttonStyle(.borderless)
-                .disabled(!canTest)
-                .help(canTest ? "Test this action" : "Finish configuring this action before testing")
-                .accessibilityLabel("Test action for \(title)")
-            }
-        } label: {
+        // A plain stack, not LabeledContent, which sizes its content to fit:
+        // the row would shift as the text in its field grows and shrinks.
+        HStack(spacing: 12) {
             Text(title)
-                .font(.body.weight(.medium))
+                .font(.body.weight(isLastGesture ? .bold : .medium))
                 .frame(width: 86, alignment: .leading)
+
+            Picker("Action", selection: $action.kind) {
+                ForEach(ActionKind.allCases) { kind in
+                    Text(kind.displayName).tag(kind)
+                }
+            }
+            .labelsHidden()
+            .frame(width: 190)
+            .accessibilityLabel("Action for \(title)")
+
+            detailControl
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button("Test", systemImage: "play.fill") {
+                onTest(action)
+            }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.borderless)
+            .disabled(!canTest)
+            .help(canTest ? "Test this action" : "Finish configuring this action before testing")
+            .accessibilityLabel("Test action for \(title)")
         }
         .padding(.vertical, 4)
-        .onDisappear(perform: stopRecordingShortcut)
+        .onDisappear {
+            stopRecordingShortcut()
+            onEditingText(false)
+        }
+        .onChange(of: isTextFocused) { _, focused in
+            if !focused { onEditingText(false) }
+        }
         .onChange(of: action) { oldValue, newValue in
             if isRevertingFailedSave {
                 isRevertingFailedSave = false
                 return
             }
+            // A field can take the cursor on its own, and a picker or a file chooser also
+            // sets the text, so only a text change in the focused field counts as an edit.
+            if isTextFocused && oldValue.text != newValue.text { onEditingText(true) }
             if !onChange(newValue) {
                 isRevertingFailedSave = true
                 action = oldValue
@@ -159,15 +167,15 @@ private struct ActionRow: View {
             .frame(maxWidth: 180)
             .accessibilityLabel("Sound to play")
         case .copyText:
-            TextField("Text to copy", text: $action.text)
+            textField("Text to copy")
         case .pasteText:
-            TextField("Text to paste", text: $action.text, prompt: Text("Leave empty to paste the clipboard"))
+            textField("Text to paste", prompt: "Leave empty to paste the clipboard")
         case .speakText:
-            TextField("Words to speak", text: $action.text)
+            textField("Words to speak")
         case .openURL:
-            TextField("Website address", text: $action.text, prompt: Text("https://example.com"))
+            textField("Website address", prompt: "https://example.com")
         case .runShortcut:
-            TextField("Shortcut name", text: $action.text, prompt: Text("Start Claude listening"))
+            textField("Shortcut name", prompt: "Start Claude listening")
         case .openApplication:
             Button {
                 chooseApplication()
@@ -186,7 +194,7 @@ private struct ActionRow: View {
             .sidetapSecondaryButton()
         case .runShellCommand:
             VStack(alignment: .leading, spacing: 3) {
-                TextField("Shell command", text: $action.text, prompt: Text("open -a Claude"))
+                textField("Shell command", prompt: "open -a Claude")
                     .font(.system(.body, design: .monospaced))
                 Text("Runs automatically after an accepted tap")
                     .font(.caption2)
@@ -229,6 +237,17 @@ private struct ActionRow: View {
             .frame(maxWidth: 180)
             .accessibilityLabel("Media key to press")
         }
+    }
+
+    /// A field for the action's text. Its placeholder shows only while the cursor is
+    /// elsewhere. Return gives up the cursor and ends the edit that holds the gesture.
+    private func textField(_ title: String, prompt: String? = nil) -> some View {
+        TextField(title, text: $action.text, prompt: prompt.map { Text(isTextFocused ? "" : $0) })
+            .focused($isTextFocused)
+            .onSubmit {
+                isTextFocused = false
+                onEditingText(false)
+            }
     }
 
     /// Takes the next key press in Sidetap's window as this action's shortcut.

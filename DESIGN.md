@@ -34,9 +34,8 @@ References were reviewed on July 16, 2026.
 
 ## Screen hierarchy
 
-- **Desk:** the current gesture, each gesture's assigned action, one compact result strip, and first-run onboarding in place.
-- **Calibration:** one gesture at a time: eight double taps, and then eight triple taps. Beginning setup is the explicit capture intent. A row of dots fills as Sidetap hears each tap of the current attempt, and an attempt counts only when it has exactly the gesture's taps and every tap is clean; otherwise Sidetap says what to change. Listening stops between the two gestures and starts again after a short transition, and a visible Start Listening control remains available after a pause. The final step shows the tap pace that Sidetap learned and surfaces Talking rejection capture as recommended.
-- **Actions:** an editor with one row for each gesture: a double tap, a triple tap, and any gesture with more taps that the user adds. Native pickers progressively reveal only the fields needed for the selected action, including Shortcuts, app/file bookmarks, shell commands, recorded keyboard shortcuts, media keys, and screenshot destinations.
-- **Diagnostics:** factual hardware and signal details in a form.
+Sidetap has one main screen and no sidebar. Calibration and diagnostics take over the window while they're open. A calibration in progress and the diagnostics screen keep every tap for themselves, so gestures run no actions there.
 
-The sidebar keeps Desk, Calibration, and Actions in workflow order. The hardware and signal diagnostics live in a separate Advanced section.
+- **Main screen:** the current gesture, an editor with one row for each gesture, one compact result strip, and first-run onboarding in place. The editor has a row for a double tap, a triple tap, and any gesture with more taps that the user adds. Native pickers progressively reveal only the fields needed for the selected action, including Shortcuts, app/file bookmarks, shell commands, recorded keyboard shortcuts, media keys, and screenshot destinations.
+- **Calibration:** one gesture at a time: eight double taps, and then eight triple taps. Beginning setup is the explicit capture intent. A row of dots fills as Sidetap hears each tap of the current attempt, and an attempt counts only when it has exactly the gesture's taps and every tap is clean; otherwise Sidetap says what to change. Listening stops between the two gestures and starts again after a short transition, and a visible Start Listening control remains available after a pause. The final step shows the tap pace that Sidetap learned and surfaces Talking rejection capture as recommended.
+- **Diagnostics:** factual hardware and signal details in a form, opened from the toolbar.

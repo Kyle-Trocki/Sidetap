@@ -2,6 +2,15 @@ import XCTest
 @testable import SidetapCore
 
 final class LocalActionPlannerTests: XCTestCase {
+    func testDefaultActionsPasteTheClipboardAndTakeAScreenshotForBothDestinations() {
+        let actions = SidetapProfile.defaultActions
+        XCTAssertEqual(actions[2].flatMap(LocalActionPlanner.command(for:)), .pasteText(""))
+        XCTAssertEqual(
+            actions[3].flatMap(LocalActionPlanner.command(for:)),
+            .takeScreenshot(interactive: false, destination: .both)
+        )
+    }
+
     func testVisualAndIncompleteActionsProduceNoCommand() {
         XCTAssertEqual(ActionConfiguration().kind, .none)
         XCTAssertNil(LocalActionPlanner.command(for: ActionConfiguration(kind: .none)))

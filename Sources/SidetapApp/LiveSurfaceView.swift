@@ -5,54 +5,40 @@ struct LiveSurfaceView: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
-        if model.profile == nil {
+        if let profile = model.profile {
+            liveDesk(profile)
+        } else {
             setupPrompt
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(36)
                 .background(SidetapTheme.background)
-        } else {
-            liveDesk
         }
     }
 
-    private var liveDesk: some View {
-        VStack(spacing: 20) {
-            Spacer(minLength: 20)
-
-            gesturePanel
-                .frame(maxWidth: 760, maxHeight: 490)
-                .padding(.horizontal, 36)
-
+    private func liveDesk(_ profile: SidetapProfile) -> some View {
+        VStack(spacing: 16) {
+            gestureHeader
+            ActionsView(model: model, profile: profile)
             resultStrip
-
-            Spacer(minLength: 28)
         }
+        .frame(maxWidth: 780)
+        .padding(28)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.horizontal, 28)
         .background(SidetapTheme.background)
     }
 
-    private var gesturePanel: some View {
-        VStack(spacing: 22) {
+    private var gestureHeader: some View {
+        VStack(spacing: 8) {
             Image(systemName: model.audio.isListening ? "hand.tap.fill" : "hand.tap")
-                .font(.system(size: 56, weight: .light))
+                .font(.system(size: 40, weight: .light))
                 .foregroundStyle(model.pendingTapCount > 0 ? Color.accentColor : Color.secondary)
             Text(gestureTitle)
                 .font(.largeTitle.weight(.semibold))
-            VStack(spacing: 10) {
-                ForEach(model.profile?.gestures ?? []) { gesture in
-                    HStack {
-                        Text(gesture.displayName)
-                            .fontWeight(model.lastGesture == gesture ? .semibold : .regular)
-                        Spacer()
-                        Text(model.profile?.action(for: gesture).kind.displayName ?? "")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-            .frame(maxWidth: 340)
+            Text(model.editingGesture.map { "\($0.displayName) is held while you edit its action. To finish, press Return or click elsewhere." }
+                ?? "Tap two or more times anywhere on the desk to run an action. Changes save automatically.")
+                .font(.callout)
+                .foregroundStyle(model.editingGesture == nil ? Color.secondary : Color.orange)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .combine)
     }
 
