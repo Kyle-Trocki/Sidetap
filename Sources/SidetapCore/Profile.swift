@@ -143,11 +143,12 @@ public struct SidetapProfile: Codable, Equatable, Sendable {
     public static let currentVersion = 4
 
     /// What a first calibration starts with: a double tap pastes the clipboard,
-    /// and a triple tap takes a screenshot for the Desktop and the clipboard.
+    /// and a triple tap takes a screenshot of a selected area for the Desktop and
+    /// the clipboard.
     public static let defaultActions: [Int: ActionConfiguration] = [
         TapGesture.double.rawValue: ActionConfiguration(kind: .pasteText),
         TapGesture.triple.rawValue: ActionConfiguration(
-            kind: .screenshotClipboard,
+            kind: .screenshotSelection,
             text: ScreenshotDestination.both.rawValue
         )
     ]

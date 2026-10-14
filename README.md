@@ -18,7 +18,7 @@ Each gesture runs one action that you choose:
 - Press a media key: play or pause, next or previous track, volume up or down, or mute.
 - Take a screenshot of the full screen or a selected area, saved to the Desktop, the clipboard, or both.
 
-A new setup starts with a double tap that pastes the clipboard and a triple tap that takes a screenshot for the Desktop and the clipboard. A gesture that you add only shows in the app until you assign an action. Shell commands run without confirmation and inside Sidetap's sandbox, so use commands that are safe to repeat. For anything that the sandbox blocks or that takes several steps, run a Shortcut.
+A new setup starts with a double tap that pastes the clipboard and a triple tap that takes a screenshot of an area you select, for the Desktop and the clipboard. A gesture that you add only shows in the app until you assign an action. Shell commands run without confirmation and inside Sidetap's sandbox, so use commands that are safe to repeat. For anything that the sandbox blocks or that takes several steps, run a Shortcut.
 
 The first time an action pastes text, presses keys, or takes a screenshot, macOS might ask for Accessibility or Screen Recording access.
 
