@@ -63,7 +63,7 @@ Sidetap starts with a double tap and a triple tap. To add a gesture with one mor
 - Any other gesture runs its action when no further tap can follow, which is about 0.7 seconds after its last tap at the default pace.
 - A single tap does nothing.
 
-To avoid false triggers, Sidetap ignores a tap within 0.3 seconds of a key press or a click, and it runs no actions while the room is too loud, during a calibration, or while **Diagnostics** is open. While you type an action's text, Sidetap holds that gesture until you press <kbd>Return</kbd>, click outside the field, or switch to another app.
+To avoid false triggers, Sidetap ignores a tap within 0.3 seconds of a key press, a click, or a touch on the trackpad, and it runs no actions while the room is too loud, during a calibration, or while **Diagnostics** is open. While you type an action's text, Sidetap holds that gesture until you press <kbd>Return</kbd>, click outside the field, or switch to another app.
 
 ## Privacy
 

@@ -432,8 +432,8 @@ final class AppModel: ObservableObject {
             statusMessage = "Room too noisy • actions paused"
             return
         }
-        if followsTypingOrClick(observation) {
-            statusMessage = "Tap ignored • typing or clicking"
+        if followsTypingOrTrackpad(observation) {
+            statusMessage = "Tap ignored • typing or trackpad"
             return
         }
         var decision = profile.classifier.predict(observation.feature)
@@ -553,15 +553,19 @@ final class AppModel: ObservableObject {
         return formatter.string(from: Date())
     }
 
-    /// A keystroke or trackpad click shakes the MacBook like a tap, and no
-    /// frequency filter tells them apart, so taps near one are ignored. Only
+    /// A keystroke, click, or trackpad touch shakes the MacBook like a tap, and
+    /// no frequency filter tells them apart, so taps near one are ignored. A
+    /// touch matters with tap to click off, where tapping the trackpad sends no
+    /// click. While a finger rests on the trackpad, every tap is ignored. Only
     /// the live path checks this; calibration still records typing as a
     /// negative example. Only physical input counts, so the ⌘V that the Paste
     /// text action sends doesn't look like typing.
-    private func followsTypingOrClick(_ observation: TapObservation) -> Bool {
+    private func followsTypingOrTrackpad(_ observation: TapObservation) -> Bool {
         let inputs: [CGEventType] = [
             .keyDown, .keyUp, .flagsChanged,
-            .leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp
+            .leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp,
+            // CGEventType has no case for touches, but the HID system tracks them.
+            CGEventType(rawValue: UInt32(NSEvent.EventType.gesture.rawValue))!
         ]
         let secondsSinceInput = inputs
             .map { CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: $0) }
