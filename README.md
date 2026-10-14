@@ -4,7 +4,7 @@
 
 Sidetap is a macOS app that listens through your MacBook's built-in microphone, recognizes taps on your desk, and counts them. Audio is processed on your Mac and never leaves it.
 
-Sidetap is an experimental prototype and a fork of [Holo](https://github.com/JustinGamer191/Holo) by JustinGamer191.
+Sidetap is an experimental prototype and a fork/ inspired by [Holo](https://github.com/JustinGamer191/Holo) by JustinGamer191.
 
 ## Actions
 
