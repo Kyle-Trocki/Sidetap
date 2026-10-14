@@ -76,6 +76,10 @@ Sidetap is sandboxed and uploads nothing. It discards raw audio after analysis, 
 - For the interface rules and signal-processing references, see [Sidetap interface direction](DESIGN.md).
 - For how to publish a signed and notarized release, see [Releasing Sidetap](RELEASING.md).
 
+## Support
+
+If Sidetap is useful to you, you can [sponsor its development](https://github.com/sponsors/Kyle-Trocki).
+
 ## License
 
 Sidetap is available under the [MIT License](LICENSE).
