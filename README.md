@@ -29,6 +29,13 @@ The first time an action pastes text, presses keys, or takes a screenshot, macOS
 
 ## Install
 
+1. Clone the repository:
+
+   ```sh
+   git clone https://github.com/Kyle-Trocki/Sidetap.git
+   cd Sidetap
+   ```
+
 1. Create the local signing certificate. You do this one time. For the commands, see [Install a local build](CONTRIBUTING.md#install-a-local-build).
 1. Build, sign, and install Sidetap:
 
@@ -67,7 +74,7 @@ Sidetap is sandboxed and uploads nothing. It discards raw audio after analysis, 
 - For what is verified and what isn't, see [Sidetap acceptance audit](ACCEPTANCE.md).
 - For build, test, and verification tools, see [Contributing to Sidetap](CONTRIBUTING.md).
 - For the interface rules and signal-processing references, see [Sidetap interface direction](DESIGN.md).
-- For signed and notarized releases, see [Releasing Sidetap](RELEASING.md).
+- For how to publish a signed and notarized release, see [Releasing Sidetap](RELEASING.md).
 
 ## License
 

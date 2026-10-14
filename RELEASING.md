@@ -1,6 +1,6 @@
 # Releasing Sidetap
 
-Sidetap is distributed directly from GitHub Releases as a signed and notarized DMG. It is not built for the Mac App Store.
+Sidetap is built from source, and it has no published releases. This page describes how to publish one: a signed and notarized DMG on GitHub Releases. Publishing needs an Apple Developer Program membership. Sidetap isn't built for the Mac App Store.
 
 ## One-time Apple setup
 
